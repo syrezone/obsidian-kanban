@@ -58,7 +58,7 @@ corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
 
-All seven test files hold 66 tests; the counts per area are given in each section.
+All seven test files hold 71 tests; the counts per area are given in each section.
 
 Nineteen tests cover 0.5/1/2 scale, fractional border boxes, asymmetric margins,
 destination scale, pan/pointer anchoring, nested scroll shifts, real manager
@@ -254,13 +254,24 @@ Applies to workspace tabs and owned embeds.
   sibling, right half nests.
   A translucent body-level ghost (`kanban-plugin__drop-ghost`, `SortManager`) fills the
   drop gap: full row width for a sibling, the right half for a child. It is positioned
-  from on-screen rects every animation frame while shown and removed on drop/cancel. `SortManager` outlines the card above the gap (`is-nest-parent`); on drop
-  `nestIntoPrevious` (`src/helpers/nestCards.ts`) makes the moved card that card's
-  last child. Hovering inside a card's child list sorts among the children. Sorting
-  geometry itself is unchanged. A card cannot be dropped into its own subtree (hit
-  test filter and `handleDrop` guard). Hitboxes of nested cards register at any
-  depth (`EntityManager.registerDescendants`). Cross-board drops ignore nesting.
-  Children of a card in edit mode cannot be dragged.
+  from on-screen rects every animation frame while shown and removed on drop/cancel.
+- **One drop target**: the `SortManager` that owns the hovered target decides the drop
+  once, as a `DropTarget` (`src/dnd/types.ts`): the receiving lane or card by ID (null
+  for the board's lanes) and a position: before a sibling's ID, at the end (the list
+  placeholder, or nesting), or `new-card` (a collapsed lane: where that board's
+  new-card insertion setting puts cards, in the same or another board). Nesting goes
+  into the nearest shown card above the gap (so search-hidden cards and the dragged
+  card are skipped), as its last child; with no card above, the drop stays a sibling
+  drop. `getDropTarget` feeds both the preview (`is-nest-parent` outline and ghost)
+  and the drop; `onDrop` receives the target and `DragDropApp` performs exactly it
+  (`src/helpers/dropTarget.ts`: `targetPath` resolves the IDs in the current board,
+  `moveToTarget` removes the entity and resolves again). A target whose parent or
+  anchor sibling is gone, or that lies inside the dragged card, changes nothing (hit
+  test filter and `moveToTarget` guard). Nesting also works across boards. Hovering
+  inside a card's child list sorts among the children; which hitbox wins where
+  nested ones overlap is unchanged (`getBestIntersect`). Hitboxes of nested cards
+  register at any depth (`EntityManager.registerDescendants`). Children of a card in
+  edit mode cannot be dragged.
 - **Note tasks** (`ItemSubtasks.tsx`): when the card's note (`cardNoteLink`, not
   Kanban's last-link `metadata.file`) has non-empty task list items, up to ten
   are previewed under the card with a collapsible `done/total` badge; ticking one
@@ -270,8 +281,10 @@ Applies to workspace tabs and owned embeds.
   flush, change, paste and Ctrl/Cmd+Enter), so a card that moved while being edited
   saves to that card wherever it now is (see Card and List Addressing).
 
-Tests: `test/nested-cards.test.mjs` (twelve: parse depth, metadata isolation, round-trip,
-plain bullets, mixed/numbered lists, nest and cross-depth moves, plus five ID-addressing
+Tests: `test/nested-cards.test.mjs` (seventeen: parse depth, metadata isolation, round-trip,
+plain bullets, mixed/numbered lists, cross-depth moves; six drop-target tests: the target
+`SortManager` derives for sibling, end, nesting (skipping hidden cards) and collapsed
+lanes, and moves to it at any depth, guarded no-ops, lanes and the new-card position; five ID-addressing
 tests: the index, updates after the card moved, a deleted card, nested insert/move/split
 and list actions with collapse state; Obsidian/Dataview/DOM stubbed) and `test/subtasks.test.mjs` (eight: note tasks, stale toggles, link detection
 in both styles, focused-editor routing). Rendering, drag gestures and Obsidian

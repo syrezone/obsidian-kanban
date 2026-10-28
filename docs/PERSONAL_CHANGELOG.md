@@ -1,5 +1,25 @@
 # Personal Changes
 
+## 2026-10-29 - One drop target for preview and drop (refactor 2.4)
+
+Review refactor 2.4, branch `refactor/drop-target`. The card outlined during a nesting
+drag was chosen by `SortManager` from the shown cards, while the drop moved the card
+by path and then `nestIntoPrevious` re-parented it under whatever card was then above
+it in the data; the two agreed only by convention (they could differ with search
+hiding cards), and cross-board drops ignored nesting. The owning `SortManager` now
+decides one `DropTarget` (receiving lane/card ID plus position) that both the preview
+and the drop use; `DragDropApp` performs it by ID (`src/helpers/dropTarget.ts`).
+`nestCards.ts` is removed, and the drop handler no longer takes `nestIntent`.
+Behaviour changes: nesting works across boards and follows the shown cards; a card
+dropped on a collapsed lane of the same board now goes where the board's new-card
+insertion setting puts cards (it went to the top; drops from another board already
+followed the setting). Not done: a new rule for overlapping nested hitboxes, since no
+erratic sorting has been reported and it would change how dragging feels.
+
+Tests: 71 (six new drop-target tests replace the `nestIntoPrevious` test), type check,
+changed-file lint and build pass. Deployed (`main.js`) to the desktop dev vault; live
+check pending. Ignis not deployed.
+
 ## 2026-10-29 - Closing a board keeps an uncommitted card edit
 
 User report: renaming a card without confirming, then unloading Kanban, lost the new
