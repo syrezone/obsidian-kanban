@@ -193,6 +193,18 @@ export class KanbanBoard extends Component implements HoverParent {
     }
   }
 
+  /** Commit open card editors like Enter; closing a board must not drop a typed draft. */
+  commitEditors() {
+    if (this.plugin.getStateManager(this.file)?.hasError() !== false) return;
+    for (const commit of Array.from(this.editorCommits)) commit();
+  }
+
+  unload(): void {
+    // Editors are children of the board, and Obsidian unloads children first.
+    this.commitEditors();
+    super.unload();
+  }
+
   onunload(): void {
     super.onunload();
     this.resolveRendered();

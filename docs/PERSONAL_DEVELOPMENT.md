@@ -174,8 +174,11 @@ integration's live results are owned by
 Maguilanote 1.2.0 persisted canvas cards are the only consumer and the live test
 host (the earlier diagnostic companion was removed on 2026-10-28). Global Kanban commands in the canvas, popouts/mobile and guaranteed async
 plugin-shutdown saving remain outside current support.
-Synchronous shutdown force-cleans components without an awaited flush; it starts
-each document's pending write but does not commit open editor drafts.
+Synchronous shutdown force-cleans components without an awaited flush. It first
+commits open card editors in every board (like Enter), then starts each document's
+pending write. Any board that closes (tab, embed, plugin unload, or a tab switching
+files) commits its open editors before Obsidian unloads them
+(`KanbanBoard.commitEditors()`).
 
 ## File Explorer Badge
 

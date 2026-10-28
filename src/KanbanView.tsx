@@ -99,6 +99,7 @@ export class KanbanView extends TextFileView {
   onModify() {}
 
   async loadFile(file: TFile) {
+    this.board.commitEditors();
     this.plugin.removeView(this.board);
     // @ts-expect-error Obsidian runtime method absent from public typings.
     return super.loadFile(file);

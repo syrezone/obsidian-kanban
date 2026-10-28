@@ -81,6 +81,10 @@ export default class KanbanPlugin extends Plugin {
   }
 
   unload(): void {
+    // Commit drafts in every board, tabs included, before onunload starts the final writes.
+    this.stateManagers.forEach((manager) =>
+      manager.viewSet.forEach((board) => board.commitEditors())
+    );
     super.unload();
     Promise.all(
       this.app.workspace.getLeavesOfType(kanbanViewType).map((leaf) => {

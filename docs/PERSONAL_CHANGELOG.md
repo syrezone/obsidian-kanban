@@ -1,5 +1,17 @@
 # Personal Changes
 
+## 2026-10-29 - Closing a board keeps an uncommitted card edit
+
+User report: renaming a card without confirming, then unloading Kanban, lost the new
+title in tabs and canvas cards. Card editors are children of their board and Obsidian
+unloads children first, so the draft was gone before anything saved; only an embed's
+explicit dispose committed drafts. `KanbanBoard.unload()` now commits its open editors
+(like Enter) first, plugin unload commits every board's editors before the final
+writes start, and a tab switching files commits before leaving. Boards with parse
+errors are skipped. Files: `src/KanbanBoard.tsx`, `src/main.ts`, `src/KanbanView.tsx`.
+66 tests, type check, changed-file lint and build pass (no unit test: the real board
+is not bundled in tests); deployed to the desktop dev vault; live check pending.
+
 ## 2026-10-29 - Owned embed as one Component; embed API 2 (refactor 2.5)
 
 Review refactor 2.5, branch `refactor/embed-component`. An embed was a set of closures
