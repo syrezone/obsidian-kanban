@@ -5,7 +5,9 @@
 User request: show a `KANBAN` badge for Kanban boards, like the `BOARD` badge
 on Maguilanote canvases. Added `src/fileExplorerTags.ts`, registered in
 `src/main.ts`, with `test/file-tags.test.mjs`. 35 tests, type check,
-changed-file lint and build pass.
+changed-file lint and build pass. Deployed to both test vaults; the user confirms
+on desktop and Ignis that boards show the badge, ordinary notes do not, rename
+and move keep it, and disabling Kanban removes it.
 
 ## 2026-10-28 - Commit open edits when switching or dragging
 
