@@ -10,7 +10,7 @@ drag. Workspace tabs have no watcher, so they were not affected. It now watches 
 embed root and its ancestors (`captureHostTransform`, `DragManager`). Not caused by the
 drop-target refactor. Tests: 72 (new: a shifted parent card keeps the drag, a host zoom
 still cancels it; it fails without the fix), type check, changed-file lint and build
-pass. Deployed to the desktop dev vault; live check pending.
+pass. Deployed to the desktop dev vault; the user confirms it works on desktop.
 
 ## 2026-10-29 - One drop target for preview and drop (refactor 2.4)
 
@@ -29,8 +29,8 @@ followed the setting). Not done: a new rule for overlapping nested hitboxes, sin
 erratic sorting has been reported and it would change how dragging feels.
 
 Tests: 71 (six new drop-target tests replace the `nestIntoPrevious` test), type check,
-changed-file lint and build pass. Deployed (`main.js`) to the desktop dev vault; live
-check pending. Ignis not deployed.
+changed-file lint and build pass. Deployed (`main.js`) to the desktop dev vault; the
+user confirms it works on desktop. Ignis not deployed.
 
 ## 2026-10-29 - Closing a board keeps an uncommitted card edit
 
