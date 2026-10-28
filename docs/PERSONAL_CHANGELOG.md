@@ -14,8 +14,10 @@ pass-throughs, `transforms`, `isEqual`/`origin`, `getHitboxDimensions` and an
 unreachable `flushBoard` guard. Paths: `src/KanbanEmbed.ts`, `src/KanbanView.tsx`,
 `src/main.ts`, `src/dnd/**`, `src/helpers/flushBoard.ts`, tests. 32 tests (one
 obsolete guard test removed, one workspace-tab pickup test added), type check,
-changed-file lint and production build pass. Not yet deployed or checked in
-Obsidian: canvas zoom/pan drags, normal-tab drags and unload during a pending save.
+changed-file lint and production build pass. Deployed (`main.js`) to both test
+vaults; the user confirms on desktop and Ignis: normal-tab drags, canvas drags at
+50/100/200% with zoom/pan cancelling mid-drag, and a pending edit saved when
+Kanban is disabled within the save delay.
 
 ## 2026-10-28 - Component-owned Kanban mounting
 
