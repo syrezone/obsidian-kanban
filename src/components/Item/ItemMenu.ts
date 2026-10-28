@@ -2,13 +2,11 @@ import update from 'immutability-helper';
 import { Menu, Notice, Platform, TFile, TFolder } from 'obsidian';
 import { Dispatch, StateUpdater, useCallback } from 'preact/hooks';
 import { StateManager } from 'src/StateManager';
-import { Path } from 'src/dnd/types';
-import { getEntityFromPath, moveEntity } from 'src/dnd/util/data';
 import { t } from 'src/lang/helpers';
 
+import { pathOf } from '../../helpers/boardIndex';
 import { BoardModifiers } from '../../helpers/boardModifiers';
 import { getDetailLeaf } from '../../helpers/detailPane';
-import { findItemPath } from '../../helpers/nestCards';
 import { applyTemplate, escapeRegExpStr, generateInstanceId } from '../helpers';
 import { EditState, Item } from '../types';
 import {
@@ -62,24 +60,28 @@ export async function newNoteFromCard(
 
   await applyTemplate(stateManager, newNoteTemplatePath as string | undefined);
 
-  // The board may have changed during the awaits; link the card where it is now.
-  const currentPath = findItemPath(stateManager.state, item.id);
-  const current = currentPath && (getEntityFromPath(stateManager.state, currentPath) as Item);
-  if (!current?.data.titleRaw.includes(prevTitle)) {
-    new Notice(`Created ${newFile.basename}, but its card changed meanwhile; link it manually.`);
-    return;
-  }
+  // The board may have changed during the awaits; link the card as it is now.
   const link = stateManager.app.fileManager.generateMarkdownLink(newFile, stateManager.file.path);
-  // A replacer function keeps `$` in the link literal.
-  const newTitleRaw = current.data.titleRaw.replace(prevTitle, () => link);
-
-  boardModifiers.updateItem(currentPath, stateManager.updateItemContent(current, newTitleRaw));
+  let linked = false;
+  if (pathOf(stateManager.state, item.id)) {
+    boardModifiers.updateItem(item.id, (current) => {
+      if (!current.data.titleRaw.includes(prevTitle)) return current;
+      linked = true;
+      // A replacer function keeps `$` in the link literal.
+      return stateManager.updateItemContent(
+        current,
+        current.data.titleRaw.replace(prevTitle, () => link)
+      );
+    });
+  }
+  if (!linked) {
+    new Notice(`Created ${newFile.basename}, but its card changed meanwhile; link it manually.`);
+  }
 }
 
 interface UseItemMenuParams {
   setEditState: Dispatch<StateUpdater<EditState>>;
   item: Item;
-  path: Path;
   boardModifiers: BoardModifiers;
   stateManager: StateManager;
 }
@@ -87,7 +89,6 @@ interface UseItemMenuParams {
 export function useItemMenu({
   setEditState,
   item,
-  path,
   boardModifiers,
   stateManager,
 }: UseItemMenuParams) {
@@ -130,11 +131,10 @@ export function useItemMenu({
                   `${this.app.fileManager.generateMarkdownLink(stateManager.file, '', '#^' + id)}`
                 );
 
-                boardModifiers.updateItem(
-                  path,
+                boardModifiers.updateItem(item.id, (current) =>
                   stateManager.updateItemContent(
-                    update(item, { data: { blockId: { $set: id } } }),
-                    item.data.titleRaw
+                    update(current, { data: { blockId: { $set: id } } }),
+                    current.data.titleRaw
                   )
                 );
               }
@@ -146,15 +146,12 @@ export function useItemMenu({
         menu.addItem((i) => {
           i.setIcon('lucide-wrap-text')
             .setTitle(t('Split card'))
-            .onClick(async () => {
-              const titles = item.data.titleRaw.split(/[\r\n]+/g).map((t) => t.trim());
-              const newItems = await Promise.all(
-                titles.map((title) => {
-                  return stateManager.getNewItem(title, ' ');
-                })
+            .onClick(() => {
+              boardModifiers.replaceItem(item.id, (current) =>
+                current.data.titleRaw
+                  .split(/[\r\n]+/g)
+                  .map((title) => stateManager.getNewItem(title.trim(), ' '))
               );
-
-              boardModifiers.splitItem(path, newItems);
             });
         });
       }
@@ -163,45 +160,45 @@ export function useItemMenu({
         .addItem((i) => {
           i.setIcon('lucide-copy')
             .setTitle(t('Duplicate card'))
-            .onClick(() => boardModifiers.duplicateEntity(path));
+            .onClick(() => boardModifiers.duplicateEntity(item.id));
         })
         .addItem((i) => {
           i.setIcon('lucide-list-start')
             .setTitle(t('Insert card before'))
             .onClick(() =>
-              boardModifiers.insertItems(path, [stateManager.getNewItem('', ' ', true)])
+              boardModifiers.insertItems(
+                item.id,
+                [stateManager.getNewItem('', ' ', true)],
+                'before'
+              )
             );
         })
         .addItem((i) => {
           i.setIcon('lucide-list-end')
             .setTitle(t('Insert card after'))
-            .onClick(() => {
-              const newPath = [...path];
-
-              newPath[newPath.length - 1] = newPath[newPath.length - 1] + 1;
-
-              boardModifiers.insertItems(newPath, [stateManager.getNewItem('', ' ', true)]);
-            });
+            .onClick(() =>
+              boardModifiers.insertItems(item.id, [stateManager.getNewItem('', ' ', true)], 'after')
+            );
         })
         .addItem((i) => {
           i.setIcon('lucide-arrow-up')
             .setTitle(t('Move to top'))
-            .onClick(() => boardModifiers.moveItemToTop(path));
+            .onClick(() => boardModifiers.moveItemToTop(item.id));
         })
         .addItem((i) => {
           i.setIcon('lucide-arrow-down')
             .setTitle(t('Move to bottom'))
-            .onClick(() => boardModifiers.moveItemToBottom(path));
+            .onClick(() => boardModifiers.moveItemToBottom(item.id));
         })
         .addItem((i) => {
           i.setIcon('lucide-archive')
             .setTitle(t('Archive card'))
-            .onClick(() => boardModifiers.archiveItem(path));
+            .onClick(() => boardModifiers.archiveItem(item.id));
         })
         .addItem((i) => {
           i.setIcon('lucide-trash-2')
             .setTitle(t('Delete card'))
-            .onClick(() => boardModifiers.deleteEntity(path));
+            .onClick(() => boardModifiers.deleteEntity(item.id));
         })
         .addSeparator()
         .addItem((i) => {
@@ -212,13 +209,7 @@ export function useItemMenu({
                 e.view,
                 stateManager,
                 coordinates,
-                constructMenuDatePickerOnChange({
-                  stateManager,
-                  boardModifiers,
-                  item,
-                  hasDate,
-                  path,
-                }),
+                constructMenuDatePickerOnChange({ stateManager, boardModifiers, item }),
                 item.data.metadata.date?.toDate()
               );
             });
@@ -238,9 +229,12 @@ export function useItemMenu({
                 `(^|\\s)${escapeRegExpStr(dateTrigger as string)}${contentMatch}`
               );
 
-              const titleRaw = item.data.titleRaw.replace(dateRegEx, '').trim();
-
-              boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRaw));
+              boardModifiers.updateItem(item.id, (current) =>
+                stateManager.updateItemContent(
+                  current,
+                  current.data.titleRaw.replace(dateRegEx, '').trim()
+                )
+              );
             });
         });
 
@@ -252,13 +246,7 @@ export function useItemMenu({
                 e.view,
                 stateManager,
                 coordinates,
-                constructMenuTimePickerOnChange({
-                  stateManager,
-                  boardModifiers,
-                  item,
-                  hasTime,
-                  path,
-                }),
+                constructMenuTimePickerOnChange({ stateManager, boardModifiers, item }),
                 item.data.metadata.time
               );
             });
@@ -274,8 +262,12 @@ export function useItemMenu({
                   `(^|\\s)${escapeRegExpStr(timeTrigger as string)}{([^}]+)}`
                 );
 
-                const titleRaw = item.data.titleRaw.replace(timeRegEx, '').trim();
-                boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRaw));
+                boardModifiers.updateItem(item.id, (current) =>
+                  stateManager.updateItemContent(
+                    current,
+                    current.data.titleRaw.replace(timeRegEx, '').trim()
+                  )
+                );
               });
           });
         }
@@ -286,18 +278,14 @@ export function useItemMenu({
       const addMoveToOptions = (menu: Menu) => {
         const lanes = stateManager.state.children;
         if (lanes.length <= 1) return;
+        const laneIndex = pathOf(stateManager.state, item.id)?.[0];
         for (let i = 0, len = lanes.length; i < len; i++) {
-          menu.addItem((item) =>
-            item
+          menu.addItem((menuItem) =>
+            menuItem
               .setIcon('lucide-square-kanban')
-              .setChecked(path[0] === i)
+              .setChecked(laneIndex === i)
               .setTitle(lanes[i].data.title)
-              .onClick(() => {
-                if (path[0] === i) return;
-                stateManager.setState((boardData) => {
-                  return moveEntity(boardData, path, [i, 0]);
-                });
-              })
+              .onClick(() => boardModifiers.moveItemToLane(item.id, lanes[i].id, 'top'))
           );
         }
       };
@@ -317,6 +305,6 @@ export function useItemMenu({
 
       menu.showAtPosition(coordinates);
     },
-    [setEditState, item, path, boardModifiers, stateManager]
+    [setEditState, item, boardModifiers, stateManager]
   );
 }

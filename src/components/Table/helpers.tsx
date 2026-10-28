@@ -99,7 +99,7 @@ export function useTableData(board: Board, stateManager: StateManager): TableDat
           });
         }
 
-        items.push({ item, lane, path: [i, j], stateManager });
+        items.push({ item, lane, stateManager });
       }
     }
 
@@ -117,8 +117,8 @@ export const baseColumns = (sizing: Record<string, number>): ColumnDef<TableItem
   columnHelper.accessor((row) => row.item.data.title, {
     id: 'card',
     cell: (info) => {
-      const { lane, item, path } = info.row.original;
-      return <ItemCell item={item} lane={lane} path={path} />;
+      const { lane, item } = info.row.original;
+      return <ItemCell item={item} lane={lane} />;
     },
     header: () => t('Card'),
     sortingFn: (a, b, id) => {
@@ -133,8 +133,8 @@ export const baseColumns = (sizing: Record<string, number>): ColumnDef<TableItem
   columnHelper.accessor((row) => row.lane.data.title, {
     id: 'lane',
     cell: (info) => {
-      const { lane, path } = info.row.original;
-      return <LaneCell lane={lane} path={path} />;
+      const { lane, item } = info.row.original;
+      return <LaneCell lane={lane} item={item} />;
     },
     header: () => t('List'),
     sortingFn: (a, b, id) => {

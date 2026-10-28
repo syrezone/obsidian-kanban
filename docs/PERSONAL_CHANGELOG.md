@@ -1,5 +1,21 @@
 # Personal Changes
 
+## 2026-10-29 - Address cards and lists by ID (refactor 2.3)
+
+Review refactor 2.3, branch `refactor/id-addressing`. Board modifiers took paths
+captured at render time; with nested cards paths shift often, so an action that ran
+after an await, a re-render or a change in another view could edit or remove the wrong
+card. Every modifier now takes an ID, resolves it in the state it changes
+(`src/helpers/boardIndex.ts`, `pathOf`) and updates the entity as it is then. A vanished
+ID changes nothing and shows a Notice. Callers converted: card menu, checkbox, content
+and editor commits, date/time pickers, lane header/menu/settings and sorts, add-card
+form, table cells (their explicit path context is gone). `splitItem` merged into
+`replaceItem`; the card menu's direct `moveEntity` became `moveItemToLane`;
+`findItemPath` replaced by `pathOf`. Drag-and-drop drops are unchanged (2.4).
+
+Tests: 57 (five new ID-addressing tests), type check, changed-file lint and production
+build pass. Not deployed or live-checked yet.
+
 ## 2026-10-29 - Review fixes for nested cards, links and embed saving
 
 Fixes from the fork review. Build marker is now `nested-cards-1` (embed API still 1).

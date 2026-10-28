@@ -2,12 +2,7 @@ import animateScrollTo from 'animated-scroll-to';
 import classcat from 'classcat';
 import update from 'immutability-helper';
 import { Fragment, memo, useCallback, useContext, useMemo, useRef, useState } from 'preact/compat';
-import {
-  DraggableProps,
-  Droppable,
-  StaticDroppable,
-  useNestedEntityPath,
-} from 'src/dnd/components/Droppable';
+import { DraggableProps, Droppable, StaticDroppable } from 'src/dnd/components/Droppable';
 import { ScrollContainer } from 'src/dnd/components/ScrollContainer';
 import { SortPlaceholder } from 'src/dnd/components/SortPlaceholder';
 import { Sortable, StaticSortable } from 'src/dnd/components/Sortable';
@@ -46,7 +41,6 @@ function DraggableLaneRaw({
   const search = useContext(SearchContext);
 
   const boardView = view.useViewState(frontmatterKey);
-  const path = useNestedEntityPath(laneIndex);
   const laneWidth = stateManager.useSetting('lane-width');
   const fullWidth = boardView === 'list' && stateManager.useSetting('full-list-lane-width');
   const insertionMethod = stateManager.useSetting('new-card-insertion-method');
@@ -82,7 +76,7 @@ function DraggableLaneRaw({
   const addItems = useCallback(
     (items: Item[]) => {
       boardModifiers[shouldPrepend ? 'prependItems' : 'appendItems'](
-        [...path, lane.children.length - 1],
+        lane.id,
         items.map((item) =>
           update(item, {
             data: {
@@ -114,7 +108,7 @@ function DraggableLaneRaw({
         }
       });
     },
-    [boardModifiers, path, lane, shouldPrepend]
+    [boardModifiers, lane, shouldPrepend]
   );
 
   const DroppableComponent = isStatic ? StaticDroppable : Droppable;
@@ -159,7 +153,6 @@ function DraggableLaneRaw({
           <CollapsedDropArea {...dropAreaProps}>
             <LaneHeader
               bindHandle={bindHandle}
-              laneIndex={laneIndex}
               lane={lane}
               setIsItemInputVisible={isCompactPrepend ? setEditState : undefined}
               isCollapsed={isCollapsed}

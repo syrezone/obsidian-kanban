@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'preact/compat';
-import { Droppable, useNestedEntityPath } from 'src/dnd/components/Droppable';
+import { Droppable } from 'src/dnd/components/Droppable';
 import { SortPlaceholder } from 'src/dnd/components/SortPlaceholder';
 import { Sortable, StaticSortable } from 'src/dnd/components/Sortable';
 import { DndManagerContext } from 'src/dnd/components/context';
@@ -74,14 +74,11 @@ const ItemInner = memo(function ItemInner({
     }
   }, [item.data.forceEditMode]);
 
-  const path = useNestedEntityPath();
-
   const showItemMenu = useItemMenu({
     boardModifiers,
     item,
     setEditState: setEditState,
     stateManager,
-    path,
   });
 
   const onContextMenu: JSX.MouseEventHandler<HTMLDivElement> = useCallback(
@@ -144,7 +141,6 @@ const ItemInner = memo(function ItemInner({
         <ItemCheckbox
           boardModifiers={boardModifiers}
           item={item}
-          path={path}
           shouldMarkItemsComplete={shouldMarkItemsComplete}
           stateManager={stateManager}
         />

@@ -58,7 +58,7 @@ corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
 
-All six test files hold 52 tests; the counts per area are given in each section.
+All six test files hold 57 tests; the counts per area are given in each section.
 
 Nineteen tests cover 0.5/1/2 scale, fractional border boxes, asymmetric margins,
 destination scale, pan/pointer anchoring, nested scroll shifts, real manager
@@ -157,6 +157,24 @@ Workspace docs own deployment hashes, raw measurements and current runtime
 results. The contracts above describe the implemented personal API; they do not
 guarantee failed-write recovery or source deletion during active editing.
 
+## Card and List Addressing
+
+`BoardModifiers` (`src/helpers/boardModifiers.ts`) take lane and card IDs, never
+paths. Each modifier resolves the ID with `pathOf` (`src/helpers/boardIndex.ts`, an
+ID-to-path index cached per immutable board state) inside the `setState` call that
+changes the board. Item and lane updates (`updateItem`, `replaceItem`, `updateLane`)
+take a function of the *current* entity, so menus, date/time pickers, editor commits,
+checkbox toggles, lane sorts and New note from card build on the card as it is when
+the action runs, not as it was rendered. Inserts are `before`/`after` an ID; moves to
+another list use `moveItemToLane` (`top` from the card menu, `bottom` from the table
+view). An ID that no longer exists leaves the board unchanged and shows a Notice.
+
+Scope: card and list actions. Drag-and-drop drops still use the paths of the hit
+entities at drop time (refactor 2.4), and DnD scopes still encode the file path
+(`scopeId:::path`, refactor 2.2). IDs are regenerated on a full parse (opening the
+board or an external change), so they protect within a session, which is where the
+async cases arise.
+
 ## Detail Pane, Nested Cards and Note Tasks
 
 Applies to workspace tabs and owned embeds.
@@ -214,10 +232,11 @@ Applies to workspace tabs and owned embeds.
   that task's text; refreshes on `metadataCache` changes.
 - **Card editors** call the latest props for every handler (Enter, Escape, submit,
   flush, change, paste and Ctrl/Cmd+Enter), so a card that moved while being edited
-  saves to its current path.
+  saves to that card wherever it now is (see Card and List Addressing).
 
-Tests: `test/nested-cards.test.mjs` (seven: parse depth, metadata isolation, round-trip,
-plain bullets, mixed/numbered lists, nest and cross-depth moves; Obsidian/Dataview/DOM
-stubbed) and `test/subtasks.test.mjs` (eight: note tasks, stale toggles, link detection
+Tests: `test/nested-cards.test.mjs` (twelve: parse depth, metadata isolation, round-trip,
+plain bullets, mixed/numbered lists, nest and cross-depth moves, plus five ID-addressing
+tests: the index, updates after the card moved, a deleted card, nested insert/move/split
+and list actions with collapse state; Obsidian/Dataview/DOM stubbed) and `test/subtasks.test.mjs` (eight: note tasks, stale toggles, link detection
 in both styles, focused-editor routing). Rendering, drag gestures and Obsidian
 events are not covered.

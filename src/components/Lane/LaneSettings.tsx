@@ -1,6 +1,5 @@
 import update from 'immutability-helper';
 import { useContext } from 'preact/compat';
-import { Path } from 'src/dnd/types';
 import { t } from 'src/lang/helpers';
 
 import { KanbanContext } from '../context';
@@ -9,11 +8,10 @@ import { EditState, Lane, isEditing } from '../types';
 
 export interface LaneSettingsProps {
   lane: Lane;
-  lanePath: Path;
   editState: EditState;
 }
 
-export function LaneSettings({ lane, lanePath, editState }: LaneSettingsProps) {
+export function LaneSettings({ lane, editState }: LaneSettingsProps) {
   const { boardModifiers } = useContext(KanbanContext);
 
   if (!isEditing(editState)) return null;
@@ -24,9 +22,8 @@ export function LaneSettings({ lane, lanePath, editState }: LaneSettingsProps) {
         <div className={c('checkbox-label')}>{t('Mark cards in this list as complete')}</div>
         <div
           onClick={() =>
-            boardModifiers.updateLane(
-              lanePath,
-              update(lane, {
+            boardModifiers.updateLane(lane.id, (current) =>
+              update(current, {
                 data: { $toggle: ['shouldMarkItemsComplete'] },
               })
             )

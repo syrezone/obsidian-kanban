@@ -1,7 +1,6 @@
 import update from 'immutability-helper';
 import { Menu, Platform } from 'obsidian';
 import { Dispatch, StateUpdater, useContext, useEffect, useMemo, useState } from 'preact/hooks';
-import { Path } from 'src/dnd/types';
 import { defaultSort } from 'src/helpers/util';
 import { t } from 'src/lang/helpers';
 import { lableToName } from 'src/parsers/helpers/inlineMetadata';
@@ -62,11 +61,10 @@ export function ConfirmAction({ action, cancel, onAction, lane }: ConfirmActionP
 
 export interface UseSettingsMenuParams {
   setEditState: Dispatch<StateUpdater<EditState>>;
-  path: Path;
   lane: Lane;
 }
 
-export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuParams) {
+export function useSettingsMenu({ setEditState, lane }: UseSettingsMenuParams) {
   const { stateManager, boardModifiers } = useContext(KanbanContext);
   const [confirmAction, setConfirmAction] = useState<LaneAction>(null);
 
@@ -106,37 +104,41 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
         i.setIcon('arrow-left-to-line')
           .setTitle(t('Insert list before'))
           .onClick(() =>
-            boardModifiers.insertLane(path, {
-              ...LaneTemplate,
-              id: generateInstanceId(),
-              children: [],
-              data: {
-                title: '',
-                shouldMarkItemsComplete: false,
-                forceEditMode: true,
+            boardModifiers.insertLane(
+              lane.id,
+              {
+                ...LaneTemplate,
+                id: generateInstanceId(),
+                children: [],
+                data: {
+                  title: '',
+                  shouldMarkItemsComplete: false,
+                  forceEditMode: true,
+                },
               },
-            })
+              'before'
+            )
           );
       })
       .addItem((i) => {
         i.setIcon('arrow-right-to-line')
           .setTitle(t('Insert list after'))
-          .onClick(() => {
-            const newPath = [...path];
-
-            newPath[newPath.length - 1] = newPath[newPath.length - 1] + 1;
-
-            boardModifiers.insertLane(newPath, {
-              ...LaneTemplate,
-              id: generateInstanceId(),
-              children: [],
-              data: {
-                title: '',
-                shouldMarkItemsComplete: false,
-                forceEditMode: true,
+          .onClick(() =>
+            boardModifiers.insertLane(
+              lane.id,
+              {
+                ...LaneTemplate,
+                id: generateInstanceId(),
+                children: [],
+                data: {
+                  title: '',
+                  shouldMarkItemsComplete: false,
+                  forceEditMode: true,
+                },
               },
-            });
-          });
+              'after'
+            )
+          );
       })
       .addSeparator()
       .addItem((item) => {
@@ -153,26 +155,27 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
       })
       .addSeparator();
 
+    // Personal build: each sort rebuilds the list from its current state (the updater's
+    // `lane`), not from the list as it was when the menu opened.
     const addSortOptions = (menu: Menu) => {
       menu.addItem((item) => {
         item
           .setIcon('arrow-down-up')
           .setTitle(t('Sort by card text'))
           .onClick(() => {
-            const children = lane.children.slice();
-            const isAsc = lane.data.sorted === LaneSort.TitleAsc;
+            boardModifiers.updateLane(lane.id, (lane) => {
+              const children = lane.children.slice();
+              const isAsc = lane.data.sorted === LaneSort.TitleAsc;
 
-            children.sort((a, b) => {
-              if (isAsc) {
-                return b.data.title.localeCompare(a.data.title);
-              }
+              children.sort((a, b) => {
+                if (isAsc) {
+                  return b.data.title.localeCompare(a.data.title);
+                }
 
-              return a.data.title.localeCompare(b.data.title);
-            });
+                return a.data.title.localeCompare(b.data.title);
+              });
 
-            boardModifiers.updateLane(
-              path,
-              update(lane, {
+              return update(lane, {
                 children: {
                   $set: children,
                 },
@@ -184,8 +187,8 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
                         : LaneSort.TitleAsc,
                   },
                 },
-              })
-            );
+              });
+            });
           });
       });
 
@@ -195,25 +198,24 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
             .setIcon('arrow-down-up')
             .setTitle(t('Sort by date'))
             .onClick(() => {
-              const children = lane.children.slice();
-              const mod = lane.data.sorted === LaneSort.DateAsc ? -1 : 1;
+              boardModifiers.updateLane(lane.id, (lane) => {
+                const children = lane.children.slice();
+                const mod = lane.data.sorted === LaneSort.DateAsc ? -1 : 1;
 
-              children.sort((a, b) => {
-                const aDate: moment.Moment | undefined =
-                  a.data.metadata.time || a.data.metadata.date;
-                const bDate: moment.Moment | undefined =
-                  b.data.metadata.time || b.data.metadata.date;
+                children.sort((a, b) => {
+                  const aDate: moment.Moment | undefined =
+                    a.data.metadata.time || a.data.metadata.date;
+                  const bDate: moment.Moment | undefined =
+                    b.data.metadata.time || b.data.metadata.date;
 
-                if (aDate && !bDate) return -1 * mod;
-                if (bDate && !aDate) return 1 * mod;
-                if (!aDate && !bDate) return 0;
+                  if (aDate && !bDate) return -1 * mod;
+                  if (bDate && !aDate) return 1 * mod;
+                  if (!aDate && !bDate) return 0;
 
-                return (aDate.isBefore(bDate) ? -1 : 1) * mod;
-              });
+                  return (aDate.isBefore(bDate) ? -1 : 1) * mod;
+                });
 
-              boardModifiers.updateLane(
-                path,
-                update(lane, {
+                return update(lane, {
                   children: {
                     $set: children,
                   },
@@ -223,8 +225,8 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
                         lane.data.sorted === LaneSort.DateAsc ? LaneSort.DateDsc : LaneSort.DateAsc,
                     },
                   },
-                })
-              );
+                });
+              });
             });
         });
       }
@@ -235,36 +237,35 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
             .setIcon('arrow-down-up')
             .setTitle(t('Sort by tags'))
             .onClick(() => {
-              const tagSortOrder = stateManager.getSetting('tag-sort');
-              const children = lane.children.slice();
-              const desc = lane.data.sorted === LaneSort.TagsAsc ? true : false;
+              boardModifiers.updateLane(lane.id, (lane) => {
+                const tagSortOrder = stateManager.getSetting('tag-sort');
+                const children = lane.children.slice();
+                const desc = lane.data.sorted === LaneSort.TagsAsc ? true : false;
 
-              children.sort((a, b) => {
-                const tagsA = a.data.metadata.tags;
-                const tagsB = b.data.metadata.tags;
+                children.sort((a, b) => {
+                  const tagsA = a.data.metadata.tags;
+                  const tagsB = b.data.metadata.tags;
 
-                if (!tagsA?.length && !tagsB?.length) return 0;
-                if (!tagsA?.length) return 1;
-                if (!tagsB?.length) return -1;
+                  if (!tagsA?.length && !tagsB?.length) return 0;
+                  if (!tagsA?.length) return 1;
+                  if (!tagsB?.length) return -1;
 
-                const aSortOrder =
-                  tagSortOrder?.findIndex((sort) => tagsA.includes(sort.tag)) ?? -1;
-                const bSortOrder =
-                  tagSortOrder?.findIndex((sort) => tagsB.includes(sort.tag)) ?? -1;
+                  const aSortOrder =
+                    tagSortOrder?.findIndex((sort) => tagsA.includes(sort.tag)) ?? -1;
+                  const bSortOrder =
+                    tagSortOrder?.findIndex((sort) => tagsB.includes(sort.tag)) ?? -1;
 
-                if (aSortOrder > -1 && bSortOrder < 0) return desc ? 1 : -1;
-                if (bSortOrder > -1 && aSortOrder < 0) return desc ? -1 : 1;
-                if (aSortOrder > -1 && bSortOrder > -1) {
-                  return desc ? bSortOrder - aSortOrder : aSortOrder - bSortOrder;
-                }
+                  if (aSortOrder > -1 && bSortOrder < 0) return desc ? 1 : -1;
+                  if (bSortOrder > -1 && aSortOrder < 0) return desc ? -1 : 1;
+                  if (aSortOrder > -1 && bSortOrder > -1) {
+                    return desc ? bSortOrder - aSortOrder : aSortOrder - bSortOrder;
+                  }
 
-                if (desc) return defaultSort(tagsB.join(''), tagsA.join(''));
-                return defaultSort(tagsA.join(''), tagsB.join(''));
-              });
+                  if (desc) return defaultSort(tagsB.join(''), tagsA.join(''));
+                  return defaultSort(tagsA.join(''), tagsB.join(''));
+                });
 
-              boardModifiers.updateLane(
-                path,
-                update(lane, {
+                return update(lane, {
                   children: {
                     $set: children,
                   },
@@ -274,8 +275,8 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
                         lane.data.sorted === LaneSort.TagsAsc ? LaneSort.TagsDsc : LaneSort.TagsAsc,
                     },
                   },
-                })
-              );
+                });
+              });
             });
         });
       }
@@ -286,32 +287,31 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
             i.setIcon('arrow-down-up')
               .setTitle(t('Sort by') + ' ' + lableToName(k).toLocaleLowerCase())
               .onClick(() => {
-                const children = lane.children.slice();
-                const desc = lane.data.sorted === k + '-asc' ? true : false;
+                boardModifiers.updateLane(lane.id, (lane) => {
+                  const children = lane.children.slice();
+                  const desc = lane.data.sorted === k + '-asc' ? true : false;
 
-                children.sort((a, b) => {
-                  const valA = a.data.metadata.inlineMetadata?.find((m) => m.key === k);
-                  const valB = b.data.metadata.inlineMetadata?.find((m) => m.key === k);
+                  children.sort((a, b) => {
+                    const valA = a.data.metadata.inlineMetadata?.find((m) => m.key === k);
+                    const valB = b.data.metadata.inlineMetadata?.find((m) => m.key === k);
 
-                  if (valA === undefined && valB === undefined) return 0;
-                  if (valA === undefined) return 1;
-                  if (valB === undefined) return -1;
+                    if (valA === undefined && valB === undefined) return 0;
+                    if (valA === undefined) return 1;
+                    if (valB === undefined) return -1;
 
-                  if (desc) {
+                    if (desc) {
+                      return defaultSort(
+                        anyToString(valB.value, stateManager),
+                        anyToString(valA.value, stateManager)
+                      );
+                    }
                     return defaultSort(
-                      anyToString(valB.value, stateManager),
-                      anyToString(valA.value, stateManager)
+                      anyToString(valA.value, stateManager),
+                      anyToString(valB.value, stateManager)
                     );
-                  }
-                  return defaultSort(
-                    anyToString(valA.value, stateManager),
-                    anyToString(valB.value, stateManager)
-                  );
-                });
+                  });
 
-                boardModifiers.updateLane(
-                  path,
-                  update(lane, {
+                  return update(lane, {
                     children: {
                       $set: children,
                     },
@@ -320,8 +320,8 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
                         $set: lane.data.sorted === k + '-asc' ? k + '-desc' : k + '-asc',
                       },
                     },
-                  })
-                );
+                  });
+                });
               });
           });
         });
@@ -339,7 +339,7 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
     }
 
     return menu;
-  }, [stateManager, setConfirmAction, path, lane]);
+  }, [stateManager, setConfirmAction, lane]);
 
   return {
     settingsMenu,

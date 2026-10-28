@@ -2,7 +2,6 @@ import update from 'immutability-helper';
 import { Menu } from 'obsidian';
 import { memo } from 'preact/compat';
 import { Dispatch, StateUpdater, useCallback, useContext, useEffect, useState } from 'preact/hooks';
-import { useNestedEntityPath } from 'src/dnd/components/Droppable';
 import { t } from 'src/lang/helpers';
 import { parseLaneTitle } from 'src/parsers/helpers/parser';
 
@@ -18,7 +17,6 @@ import { LaneLimitCounter, LaneTitle } from './LaneTitle';
 
 interface LaneHeaderProps {
   lane: Lane;
-  laneIndex: number;
   bindHandle: (el: HTMLElement) => void;
   setIsItemInputVisible?: Dispatch<StateUpdater<EditState>>;
   isCollapsed: boolean;
@@ -82,19 +80,15 @@ function LaneButtons({
 
 export const LaneHeader = memo(function LaneHeader({
   lane,
-  laneIndex,
   bindHandle,
   setIsItemInputVisible,
   isCollapsed,
   toggleIsCollapsed,
 }: LaneHeaderProps) {
   const [editState, setEditState] = useState<EditState>(EditingState.cancel);
-  const lanePath = useNestedEntityPath(laneIndex);
-
   const { boardModifiers } = useContext(KanbanContext);
   const { settingsMenu, confirmAction, setConfirmAction } = useSettingsMenu({
     setEditState,
-    path: lanePath,
     lane,
   });
 
@@ -107,9 +101,8 @@ export const LaneHeader = memo(function LaneHeader({
   const onLaneTitleChange = useCallback(
     (str: string) => {
       const { title, maxItems } = parseLaneTitle(str);
-      boardModifiers.updateLane(
-        lanePath,
-        update(lane, {
+      boardModifiers.updateLane(lane.id, (current) =>
+        update(current, {
           data: {
             title: { $set: title },
             maxItems: { $set: maxItems },
@@ -117,7 +110,7 @@ export const LaneHeader = memo(function LaneHeader({
         })
       );
     },
-    [boardModifiers, lane, lanePath]
+    [boardModifiers, lane.id]
   );
 
   const onDoubleClick = useCallback(
@@ -165,7 +158,7 @@ export const LaneHeader = memo(function LaneHeader({
         />
       </div>
 
-      <LaneSettings editState={editState} lane={lane} lanePath={lanePath} />
+      <LaneSettings editState={editState} lane={lane} />
 
       {confirmAction && (
         <ConfirmAction
@@ -174,13 +167,13 @@ export const LaneHeader = memo(function LaneHeader({
           onAction={() => {
             switch (confirmAction) {
               case 'archive':
-                boardModifiers.archiveLane(lanePath);
+                boardModifiers.archiveLane(lane.id);
                 break;
               case 'archive-items':
-                boardModifiers.archiveLaneItems(lanePath);
+                boardModifiers.archiveLaneItems(lane.id);
                 break;
               case 'delete':
-                boardModifiers.deleteEntity(lanePath);
+                boardModifiers.deleteEntity(lane.id);
                 break;
             }
 

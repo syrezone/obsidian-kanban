@@ -2,8 +2,6 @@ import classcat from 'classcat';
 import { Menu } from 'obsidian';
 import { JSX, memo, useCallback, useContext, useState } from 'preact/compat';
 import isEqual from 'react-fast-compare';
-import { ExplicitPathContext } from 'src/dnd/components/context';
-import { moveEntity } from 'src/dnd/util/data';
 
 import { Icon } from '../Icon/Icon';
 import { DateAndTime, RelativeDate } from '../Item/DateAndTime';
@@ -26,7 +24,7 @@ export const DateCell = memo(function DateCell({
   shouldShowRelativeDate: boolean;
 }) {
   const { stateManager, filePath } = useContext(KanbanContext);
-  const { onEditDate, onEditTime } = useDatePickers(item.item, item.path);
+  const { onEditDate, onEditTime } = useDatePickers(item.item);
   const getDateColor = useGetDateColorFn(stateManager);
 
   return (
@@ -49,7 +47,7 @@ export const DateCell = memo(function DateCell({
 });
 
 export const ItemCell = memo(
-  function ItemCell({ item, lane, path }: { item: Item; lane: Lane; path: number[] }) {
+  function ItemCell({ item, lane }: { item: Item; lane: Lane }) {
     const { stateManager, boardModifiers } = useContext(KanbanContext);
     const search = useContext(SearchContext);
     const [editState, setEditState] = useState<EditState>(null);
@@ -60,7 +58,6 @@ export const ItemCell = memo(
       item,
       setEditState,
       stateManager,
-      path,
     });
 
     const onContextMenu: JSX.MouseEventHandler<HTMLDivElement> = useCallback(
@@ -83,45 +80,41 @@ export const ItemCell = memo(
     }, []);
 
     return (
-      <ExplicitPathContext.Provider value={path}>
-        <div
-          onContextMenu={onContextMenu}
-          // eslint-disable-next-line react/no-unknown-property
-          onDblClick={onDoubleClick}
-          className={c('item-content-wrapper')}
-        >
-          <div className={c('item-title-wrapper')}>
-            <ItemCheckbox
-              boardModifiers={boardModifiers}
-              item={item}
-              path={path}
-              shouldMarkItemsComplete={shouldMarkItemsComplete}
-              stateManager={stateManager}
-            />
-            <ItemContent
-              editState={editState}
-              item={item}
-              setEditState={setEditState}
-              showMetadata={false}
-              searchQuery={search?.query}
-              isStatic={false}
-            />
-          </div>
+      <div
+        onContextMenu={onContextMenu}
+        // eslint-disable-next-line react/no-unknown-property
+        onDblClick={onDoubleClick}
+        className={c('item-content-wrapper')}
+      >
+        <div className={c('item-title-wrapper')}>
+          <ItemCheckbox
+            boardModifiers={boardModifiers}
+            item={item}
+            shouldMarkItemsComplete={shouldMarkItemsComplete}
+            stateManager={stateManager}
+          />
+          <ItemContent
+            editState={editState}
+            item={item}
+            setEditState={setEditState}
+            showMetadata={false}
+            searchQuery={search?.query}
+            isStatic={false}
+          />
         </div>
-      </ExplicitPathContext.Provider>
+      </div>
     );
   },
   (prev, next) => {
     return (
       prev.lane.data.shouldMarkItemsComplete === next.lane.data.shouldMarkItemsComplete &&
-      isEqual(prev.item, next.item) &&
-      isEqual(prev.path, next.path)
+      isEqual(prev.item, next.item)
     );
   }
 );
 
-export const LaneCell = memo(function LaneCell({ lane, path }: { lane: Lane; path: number[] }) {
-  const { stateManager } = useContext(KanbanContext);
+export const LaneCell = memo(function LaneCell({ lane, item }: { lane: Lane; item: Item }) {
+  const { stateManager, boardModifiers } = useContext(KanbanContext);
   const search = useContext(SearchContext);
   return (
     <div className={c('cell-flex-wrapper')}>
@@ -133,17 +126,11 @@ export const LaneCell = memo(function LaneCell({ lane, path }: { lane: Lane; pat
 
           for (let i = 0, len = lanes.length; i < len; i++) {
             const l = lanes[i];
-            menu.addItem((item) =>
-              item
+            menu.addItem((menuItem) =>
+              menuItem
                 .setChecked(lane === l)
                 .setTitle(l.data.title)
-                .onClick(() => {
-                  if (lane === l) return;
-                  stateManager.setState((boardData) => {
-                    const target = boardData.children[i];
-                    return moveEntity(boardData, path, [i, target.children.length]);
-                  });
-                })
+                .onClick(() => boardModifiers.moveItemToLane(item.id, l.id, 'bottom'))
             );
           }
 

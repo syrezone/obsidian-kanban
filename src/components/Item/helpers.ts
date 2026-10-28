@@ -1,7 +1,6 @@
 import { FileWithPath, fromEvent } from 'file-selector';
 import { Platform, TFile, TFolder, htmlToMarkdown, moment, parseLinktext, setIcon } from 'obsidian';
 import { StateManager } from 'src/StateManager';
-import { Path } from 'src/dnd/types';
 import { buildLinkToDailyNote } from 'src/helpers';
 import { getTaskStatusDone } from 'src/parsers/helpers/inlineMetadata';
 
@@ -87,16 +86,12 @@ interface ConstructMenuDatePickerOnChangeParams {
   stateManager: StateManager;
   boardModifiers: BoardModifiers;
   item: Item;
-  hasDate: boolean;
-  path: Path;
 }
 
 export function constructMenuDatePickerOnChange({
   stateManager,
   boardModifiers,
   item,
-  hasDate,
-  path,
 }: ConstructMenuDatePickerOnChangeParams) {
   const dateFormat = stateManager.getSetting('date-format');
   const shouldLinkDates = stateManager.getSetting('link-date-to-daily-note');
@@ -113,15 +108,13 @@ export function constructMenuDatePickerOnChange({
       ? buildLinkToDailyNote(stateManager.app, formattedDate)
       : `{${formattedDate}}`;
 
-    let titleRaw = item.data.titleRaw;
-
-    if (hasDate) {
-      titleRaw = item.data.titleRaw.replace(dateRegEx, `$1${dateTrigger}${wrappedDate}`);
-    } else {
-      titleRaw = `${item.data.titleRaw} ${dateTrigger}${wrappedDate}`;
-    }
-
-    boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRaw));
+    // The picker stays open while the board may change; edit the card as it is now.
+    boardModifiers.updateItem(item.id, (current) => {
+      const titleRaw = current.data.metadata.date
+        ? current.data.titleRaw.replace(dateRegEx, `$1${dateTrigger}${wrappedDate}`)
+        : `${current.data.titleRaw} ${dateTrigger}${wrappedDate}`;
+      return stateManager.updateItemContent(current, titleRaw);
+    });
   };
 }
 
@@ -246,30 +239,24 @@ interface ConstructMenuTimePickerOnChangeParams {
   stateManager: StateManager;
   boardModifiers: BoardModifiers;
   item: Item;
-  hasTime: boolean;
-  path: Path;
 }
 
 export function constructMenuTimePickerOnChange({
   stateManager,
   boardModifiers,
   item,
-  hasTime,
-  path,
 }: ConstructMenuTimePickerOnChangeParams) {
   const timeTrigger = stateManager.getSetting('time-trigger');
   const timeRegEx = new RegExp(`(^|\\s)${escapeRegExpStr(timeTrigger as string)}{([^}]+)}`);
 
   return (time: string) => {
-    let titleRaw = item.data.titleRaw;
-
-    if (hasTime) {
-      titleRaw = item.data.titleRaw.replace(timeRegEx, `$1${timeTrigger}{${time}}`);
-    } else {
-      titleRaw = `${item.data.titleRaw} ${timeTrigger}{${time}}`;
-    }
-
-    boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRaw));
+    // The picker stays open while the board may change; edit the card as it is now.
+    boardModifiers.updateItem(item.id, (current) => {
+      const titleRaw = current.data.metadata.time
+        ? current.data.titleRaw.replace(timeRegEx, `$1${timeTrigger}{${time}}`)
+        : `${current.data.titleRaw} ${timeTrigger}{${time}}`;
+      return stateManager.updateItemContent(current, titleRaw);
+    });
   };
 }
 

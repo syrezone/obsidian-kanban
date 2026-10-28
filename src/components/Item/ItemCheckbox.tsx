@@ -1,7 +1,6 @@
 import update from 'immutability-helper';
 import { memo, useCallback, useEffect, useState } from 'preact/compat';
 import { StateManager } from 'src/StateManager';
-import { Path } from 'src/dnd/types';
 import { getTaskStatusDone, toggleTask } from 'src/parsers/helpers/inlineMetadata';
 
 import { BoardModifiers } from '../../helpers/boardModifiers';
@@ -10,7 +9,6 @@ import { c } from '../helpers';
 import { Item } from '../types';
 
 interface ItemCheckboxProps {
-  path: Path;
   item: Item;
   shouldMarkItemsComplete: boolean;
   stateManager: StateManager;
@@ -19,7 +17,6 @@ interface ItemCheckboxProps {
 
 export const ItemCheckbox = memo(function ItemCheckbox({
   shouldMarkItemsComplete,
-  path,
   item,
   stateManager,
   boardModifiers,
@@ -30,35 +27,34 @@ export const ItemCheckbox = memo(function ItemCheckbox({
   const [isHoveringCheckbox, setIsHoveringCheckbox] = useState(false);
 
   const onCheckboxChange = useCallback(() => {
-    const updates = toggleTask(item, stateManager.file);
-    if (updates) {
+    boardModifiers.replaceItem(item.id, (current) => {
+      const updates = toggleTask(current, stateManager.file);
+      if (!updates) {
+        return [
+          update(current, {
+            data: {
+              checkChar: {
+                $apply: (v) => {
+                  return v === ' ' ? getTaskStatusDone() : ' ';
+                },
+              },
+              $toggle: ['checked'],
+            },
+          }),
+        ];
+      }
+
       const [itemStrings, checkChars, thisIndex] = updates;
-      const replacements: Item[] = itemStrings.map((str, i) => {
+      return itemStrings.map((str, i) => {
         const next = stateManager.getNewItem(str, checkChars[i]);
         if (i === thisIndex) {
-          next.id = item.id;
-          next.children = item.children;
+          next.id = current.id;
+          next.children = current.children;
         }
         return next;
       });
-
-      boardModifiers.replaceItem(path, replacements);
-    } else {
-      boardModifiers.updateItem(
-        path,
-        update(item, {
-          data: {
-            checkChar: {
-              $apply: (v) => {
-                return v === ' ' ? getTaskStatusDone() : ' ';
-              },
-            },
-            $toggle: ['checked'],
-          },
-        })
-      );
-    }
-  }, [item, stateManager, boardModifiers, ...path]);
+    });
+  }, [item.id, stateManager, boardModifiers]);
 
   useEffect(() => {
     if (isHoveringCheckbox) {
@@ -114,7 +110,7 @@ export const ItemCheckbox = memo(function ItemCheckbox({
       {(isCtrlHoveringCheckbox || (!shouldShowCheckbox && shouldMarkItemsComplete)) && (
         <a
           onClick={() => {
-            boardModifiers.archiveItem(path);
+            boardModifiers.archiveItem(item.id);
           }}
           className={`${c('item-prefix-button')} clickable-icon`}
           aria-label={isCtrlHoveringCheckbox ? undefined : 'Archive card'}

@@ -27,6 +27,8 @@ const built = await build({
       export { astToUnhydratedBoard, boardToMd } from './src/parsers/formats/list';
       export { nestIntoPrevious } from './src/helpers/nestCards';
       export { moveEntity } from './src/dnd/util/data';
+      export { getBoardModifiers } from './src/helpers/boardModifiers';
+      export { pathOf } from './src/helpers/boardIndex';
     `,
     resolveDir: fileURLToPath(new URL('../', import.meta.url)),
     loader: 'ts',
@@ -45,7 +47,7 @@ const built = await build({
       export class TFolder {}
       export class Component {}
       export class Menu {}
-      export class Notice {}
+      export class Notice { constructor(message) { globalThis.notices.push(message); } }
       export class Modal {}
       export class Setting {}
       export class PluginSettingTab {}
@@ -72,7 +74,9 @@ const built = await build({
     ` }));
   } }],
 });
-const { parseMarkdown, astToUnhydratedBoard, boardToMd, nestIntoPrevious, moveEntity } = await import(
+const {
+  parseMarkdown, astToUnhydratedBoard, boardToMd, nestIntoPrevious, moveEntity, getBoardModifiers, pathOf,
+} = await import(
   `data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`
 );
 
@@ -160,4 +164,88 @@ test('a child card can be moved out to the lane and between parents', () => {
   assert.equal(out.children[0].children[2].children[0].data.titleRaw, 'Xmas calender');
   const into = moveEntity(board, [0, 0, 0], [0, 1, 0]);
   assert.deepEqual(into.children[0].children[1].children.map((card) => card.data.titleRaw), ['lumee worming']);
+});
+
+// Modifiers address cards and lists by id and resolve it against the state they change, so
+// an action captured before the board changed still lands on the same card.
+function modifierFixture() {
+  globalThis.notices = [];
+  let collapse = [false, true];
+  const manager = {
+    state: parse(md),
+    getSetting: () => false,
+    setState(change) { this.state = typeof change === 'function' ? change(this.state) : change; },
+    setError(error) { throw error; },
+    updateItemContent: (item, titleRaw) => ({ ...item, data: { ...item.data, titleRaw } }),
+  };
+  const view = {
+    getViewState: () => collapse,
+    setViewState(_key, _value, op) { collapse = op(collapse); },
+  };
+  return { manager, modifiers: getBoardModifiers(view, manager), collapse: () => collapse };
+}
+const titles = (cards) => cards.map((card) => card.data.titleRaw);
+
+test('pathOf finds lists and cards at any depth in the current board', () => {
+  const board = parse(md);
+  const [parent] = board.children[0].children;
+  assert.deepEqual(pathOf(board, board.children[0].id), [0]);
+  assert.deepEqual(pathOf(board, parent.children[1].children[0].id), [0, 0, 1, 0]);
+  assert.equal(pathOf(board, 'missing'), null);
+  const moved = moveEntity(board, [0, 1], [0, 0]);
+  assert.deepEqual(pathOf(moved, parent.id), [0, 1]);
+});
+
+test('an update captured before the board changed edits the same card, as it is now', () => {
+  const { manager, modifiers } = modifierFixture();
+  const child = manager.state.children[0].children[0].children[0];
+  // Another view moves the card out of its parent before the edit lands.
+  manager.setState((board) => moveEntity(board, [0, 0, 0], [0, 2]));
+  manager.setState((board) => ({ ...board }));
+  modifiers.updateItem(child.id, (current) => ({ ...current, data: { ...current.data, titleRaw: current.data.titleRaw + ' done' } }));
+  assert.deepEqual(titles(manager.state.children[0].children), ['Send fragomen #admin', 'Cat cave', 'lumee worming done']);
+  assert.deepEqual(titles(manager.state.children[0].children[0].children), ['[[Fill gap]] #child-tag']);
+});
+
+test('a card removed meanwhile is not replaced by whatever took its place', () => {
+  const { manager, modifiers } = modifierFixture();
+  const catCave = manager.state.children[0].children[1];
+  manager.setState((board) => moveEntity(board, [0, 1], [0, 0]));
+  modifiers.deleteEntity(catCave.id);
+  const before = manager.state;
+  modifiers.updateItem(catCave.id, () => { throw new Error('must not run'); });
+  assert.equal(manager.state, before);
+  assert.deepEqual(titles(manager.state.children[0].children), ['Send fragomen #admin']);
+  assert.equal(globalThis.notices.length, 1);
+});
+
+test('insert, move and split work relative to the card, including nested cards', () => {
+  const { manager, modifiers } = modifierFixture();
+  const [parent, catCave] = manager.state.children[0].children;
+  const [, fillGap] = parent.children;
+  const card = (title) => ({ ...catCave, id: title, children: [], data: { ...catCave.data, titleRaw: title } });
+
+  modifiers.insertItems(fillGap.id, [card('before gap')], 'before');
+  modifiers.insertItems(fillGap.id, [card('after gap')], 'after');
+  assert.deepEqual(titles(manager.state.children[0].children[0].children), ['lumee worming', 'before gap', '[[Fill gap]] #child-tag', 'after gap']);
+
+  modifiers.moveItemToTop(fillGap.id);
+  modifiers.moveItemToBottom('before gap');
+  assert.deepEqual(titles(manager.state.children[0].children[0].children), ['[[Fill gap]] #child-tag', 'lumee worming', 'after gap', 'before gap']);
+
+  modifiers.replaceItem(catCave.id, (current) => [card(current.data.titleRaw + ' 1'), card('Cat cave 2')]);
+  assert.deepEqual(titles(manager.state.children[0].children), ['Send fragomen #admin', 'Cat cave 1', 'Cat cave 2']);
+});
+
+test('list actions resolve the list by id and keep collapse state aligned', () => {
+  const { manager, modifiers, collapse } = modifierFixture();
+  const lane = manager.state.children[0];
+  const newLane = { ...lane, id: 'new lane', children: [], data: { ...lane.data, title: 'Later' } };
+  modifiers.insertLane(lane.id, newLane, 'before');
+  assert.deepEqual(manager.state.children.map((l) => l.data.title), ['Later', 'Do']);
+  assert.deepEqual(collapse(), [false, false, true]);
+  modifiers.updateLane(lane.id, (current) => ({ ...current, data: { ...current.data, title: 'Doing' } }));
+  modifiers.deleteEntity('new lane');
+  assert.deepEqual(manager.state.children.map((l) => l.data.title), ['Doing']);
+  assert.deepEqual(collapse(), [false, true]);
 });

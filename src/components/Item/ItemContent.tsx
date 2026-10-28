@@ -10,8 +10,6 @@ import {
   useRef,
 } from 'preact/hooks';
 import { StateManager } from 'src/StateManager';
-import { useNestedEntityPath } from 'src/dnd/components/Droppable';
-import { Path } from 'src/dnd/types';
 import { getTaskStatusDone, toggleTaskString } from 'src/parsers/helpers/inlineMetadata';
 
 import { MarkdownEditor, allowNewLine } from '../Editor/MarkdownEditor';
@@ -31,9 +29,8 @@ import {
   constructTimePicker,
 } from './helpers';
 
-export function useDatePickers(item: Item, explicitPath?: Path) {
+export function useDatePickers(item: Item) {
   const { stateManager, boardModifiers } = useContext(KanbanContext);
-  const path = explicitPath || useNestedEntityPath();
 
   return useMemo(() => {
     const onEditDate = (e: MouseEvent) => {
@@ -41,13 +38,7 @@ export function useDatePickers(item: Item, explicitPath?: Path) {
         e.view,
         stateManager,
         { x: e.clientX, y: e.clientY },
-        constructMenuDatePickerOnChange({
-          stateManager,
-          boardModifiers,
-          item,
-          hasDate: true,
-          path,
-        }),
+        constructMenuDatePickerOnChange({ stateManager, boardModifiers, item }),
         item.data.metadata.date?.toDate()
       );
     };
@@ -57,13 +48,7 @@ export function useDatePickers(item: Item, explicitPath?: Path) {
         e.view, // Preact uses real events, so this is safe
         stateManager,
         { x: e.clientX, y: e.clientY },
-        constructMenuTimePickerOnChange({
-          stateManager,
-          boardModifiers,
-          item,
-          hasTime: true,
-          path,
-        }),
+        constructMenuTimePickerOnChange({ stateManager, boardModifiers, item }),
         item.data.metadata.time
       );
     };
@@ -72,7 +57,7 @@ export function useDatePickers(item: Item, explicitPath?: Path) {
       onEditDate,
       onEditTime,
     };
-  }, [boardModifiers, path, item, stateManager]);
+  }, [boardModifiers, item, stateManager]);
 }
 
 export interface ItemContentProps {
@@ -194,8 +179,11 @@ export const ItemContent = memo(function ItemContent({
 
   useEffect(() => {
     if (editState === EditingState.complete) {
-      if (titleRef.current !== null) {
-        boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRef.current));
+      const title = titleRef.current;
+      if (title !== null) {
+        boardModifiers.updateItem(item.id, (current) =>
+          stateManager.updateItemContent(current, title)
+        );
       }
       titleRef.current = null;
     } else if (editState === EditingState.cancel) {
@@ -203,7 +191,6 @@ export const ItemContent = memo(function ItemContent({
     }
   }, [editState, stateManager, item]);
 
-  const path = useNestedEntityPath();
   const { onEditDate, onEditTime } = useDatePickers(item);
   const onEnter = useCallback(
     (cm: EditorView, mod: boolean, shift: boolean) => {
@@ -245,13 +232,15 @@ export const ItemContent = memo(function ItemContent({
         }
 
         const checkboxIndex = parseInt(target.dataset.checkboxIndex, 10);
-        const checked = checkCheckbox(stateManager, item.data.titleRaw, checkboxIndex);
-        const updated = stateManager.updateItemContent(item, checked);
-
-        boardModifiers.updateItem(path, updated);
+        boardModifiers.updateItem(item.id, (current) =>
+          stateManager.updateItemContent(
+            current,
+            checkCheckbox(stateManager, current.data.titleRaw, checkboxIndex)
+          )
+        );
       }
     },
-    [path, boardModifiers, stateManager, item]
+    [boardModifiers, stateManager, item]
   );
 
   if (!isStatic && isEditing(editState)) {
@@ -266,7 +255,9 @@ export const ItemContent = memo(function ItemContent({
           onFlush={(cm) => {
             const title = cm.state.doc.toString().trim();
             if (title !== item.data.titleRaw) {
-              boardModifiers.updateItem(path, stateManager.updateItemContent(item, title));
+              boardModifiers.updateItem(item.id, (current) =>
+                stateManager.updateItemContent(current, title)
+              );
             }
             titleRef.current = null;
             setEditState(EditingState.complete);
