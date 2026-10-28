@@ -53,12 +53,12 @@ From this checkout, using the existing Yarn lockfile:
 
 ```powershell
 corepack yarn@1.22.22 install --frozen-lockfile --non-interactive
-node --test test/canvas-geometry.test.mjs test/flush-board.test.mjs test/owned-mount.test.mjs test/file-tags.test.mjs test/subtasks.test.mjs test/nested-cards.test.mjs
+node --test test/*.test.mjs
 corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
 
-All six test files hold 57 tests; the counts per area are given in each section.
+All seven test files hold 65 tests; the counts per area are given in each section.
 
 Nineteen tests cover 0.5/1/2 scale, fractional border boxes, asymmetric margins,
 destination scale, pan/pointer anchoring, nested scroll shifts, real manager
@@ -75,11 +75,44 @@ Deploy only runtime artifacts, preserve `data.json`, then reload Kanban. Check a
 normal Kanban tab, then a saved Maguilanote canvas card: repeat 50/100/200%/pan
 drags, scrolling, auto-scroll, cancellation, task order and Markdown persistence.
 
+## File Saving and Sync (BoardDocument)
+
+One `BoardDocument` (`src/BoardDocument.ts`) per open board file, owned by its
+`StateManager`, is the only owner of the file's text and its connection to disk, for
+workspace tabs and owned embeds alike. Views keep no copy of the text.
+
+- `StateManager.saveToDisk()` serializes the board into `document.update(text)`. A text
+  that differs from the last saved copy is written 2 s after the first change (no timer
+  reset, like Obsidian's TextFileView). `save()` writes now. Writes run one at a time
+  through `vault.process`, which compares the disk with the last saved copy.
+- External changes (one `modify` listener per file): the echo of our own write is
+  ignored; a clean board reloads the disk text; pending edits are merged with the disk
+  text line by line (`src/helpers/merge3.ts`) and a Notice says so. Where both sides
+  changed the same lines, the board's lines win; where both only added lines at the
+  same place, both are kept. A change that reaches disk before its event is merged the
+  same way at write time. This matches Obsidian's own policy for text views.
+- A deleted source, or one no longer a Kanban board, stops all saving
+  (`owner.onSourceLost`): a tab of a converted note opens it as Markdown, an embed shows
+  a Notice. Obsidian closes tabs of deleted files.
+- A failed write rejects, shows a Notice for timed saves, restores the last saved copy
+  and keeps the edits pending; the next save retries (no automatic retry loop).
+- `KanbanView` routes TextFileView's `save()`, `saveImmediately()` (called by Obsidian
+  when a pending edit must be written now), `requestSave` and `onModify` to the
+  document; its initial file load still goes through TextFileView.
+- Removing a file's last view, or plugin unload, disposes the document: it stops
+  listening and starts a pending write without awaiting it.
+
+The merge compares lines with a longest-common-subsequence table after trimming the
+common start and end; very large boards changed throughout on both sides are slow to
+merge. Ten tests (`test/board-document.test.mjs`) cover the merge rules, timed saving,
+own-write echoes, reload, merge on change and at write time, deleted/converted sources,
+failed writes and disposal; the vault is stubbed.
+
 ## Save Boundary (build 3)
 
 `KanbanBoard.flush()` commits mounted editors in every view sharing its file,
-serializes through the existing StateManager, then awaits the primary native
-`TextFileView.save()`. Parse/commit/write failures reject. Renames commit directly
+serializes through the existing StateManager, then awaits the file's
+`BoardDocument.save()`. Parse/commit/write failures reject. Renames commit directly
 rather than waiting for a Preact effect; new task/list drafts submit only when
 nonempty. Editor registrations follow component lifetime; cleanup releases
 active editor ownership on desktop as well as mobile.
@@ -90,7 +123,7 @@ or form editor first runs the other open editors' commits, exactly like Enter
 upstream's silent cancel. Escape still cancels. This applies to workspace tabs as
 well as embeds.
 
-Five save-boundary tests verify shared-editor ordering, primary-only writing,
+Five save-boundary tests verify shared-editor ordering, a single document save,
 awaited completion and error propagation. These stub
 the native save boundary; Obsidian/Ignis save behavior and the actual editor
 callbacks have passed user-guided timed Reset checks on desktop and Ignis: active task/column renames, new-task draft submission and no blank task from an empty form. Concurrent edits during flush, external writes,
@@ -114,25 +147,19 @@ native parsing/portal layout and rolls back partial registration on failure.
 Component. `KanbanView.tsx` adapts real workspace tabs to it; `KanbanEmbed.ts`
 provides a component/container owner without a leaf. Both use the existing
 window Preact root, DnD scopes, parser and per-file StateManager. Editors are
-children of their board, not the plugin. Native tabs still save through
-TextFileView; an embedded primary uses a serialized Obsidian vault writer.
-Only StateManager's selected primary schedules saves. Maguilanote never writes
-Kanban Markdown. Read-only mounting does not write.
+children of their board, not the plugin. Both save through the file's shared
+`BoardDocument` (above). Maguilanote never writes Kanban Markdown. Read-only
+mounting does not write.
 
 Explicit disposal disables input, commits/flushes, then unregisters/unloads the
 board and removes its own DOM. Repeated disposal shares the pending promise;
-failed saving preserves the board and restores interaction. Failed write queues
-stay failed and report errors; there is no automatic retry. Scoped file events
-refresh clean external changes and report conflicting pending edits, source
-conversion or deletion. The modify event of the embed's own write (in flight or
-completed) is not a conflict, even when newer edits are pending. An embed that is
-not the primary leaves external changes to the primary native tab, except that a
-source converted away from Kanban still blocks its later saving. These guards do
-not provide concurrent-write merging.
+failed saving preserves the board and restores interaction. External changes,
+merging and lost sources follow File Saving and Sync; a lost source makes later
+flushes and disposal reject.
 
-Eleven tests cover read-only mount, awaited/idempotent disposal, save failure,
-pending cancellation/shutdown, failed registration, shared primary writing,
-invalid/converted sources, own-write echoes with pending edits and secondary embeds. Renderer, DOM and Obsidian event behavior are stubbed;
+Nine tests cover read-only mount, awaited/idempotent disposal, save failure,
+pending cancellation/shutdown, failed registration, a document shared by two embeds,
+invalid sources and lost-source reporting. Renderer, DOM and Obsidian event behavior are stubbed;
 the user confirms normal-tab and owned-host interaction, explicit/timed Reset
 persistence and shared-source checks on desktop and Ignis. The saved-card
 integration's live results are owned by
@@ -142,7 +169,7 @@ Maguilanote 1.2.0 persisted canvas cards are the only consumer and the live test
 host (the earlier diagnostic companion was removed on 2026-10-28). Global Kanban commands in the canvas, popouts/mobile and guaranteed async
 plugin-shutdown saving remain outside current support.
 Synchronous shutdown force-cleans components without an awaited flush; it starts
-an embed's pending debounced write but does not commit open editor drafts.
+each document's pending write but does not commit open editor drafts.
 
 ## File Explorer Badge
 

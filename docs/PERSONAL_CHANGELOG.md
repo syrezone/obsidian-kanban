@@ -1,5 +1,23 @@
 # Personal Changes
 
+## 2026-10-29 - One BoardDocument per file for saving and sync (refactor 2.1)
+
+Review refactor 2.1, branch `refactor/board-document`. Native tabs saved through
+TextFileView (which merges external changes into pending edits), while owned embeds had
+their own write queue that latched a conflict on any external change; every view also
+kept its own copy of the file text, synchronized by convention. A per-file
+`BoardDocument` (`src/BoardDocument.ts`, owned by `StateManager`) now holds the text,
+the last saved copy, the write queue and the only modify/delete listener. Policy (user
+decision): merge external changes into pending edits line by line, as Obsidian does,
+for tabs and embeds alike (`src/helpers/merge3.ts`). `KanbanView` routes `save`,
+`saveImmediately`, `requestSave` and `onModify` to it; `KanbanEmbed`, `KanbanBoard` and
+`flushBoard` lost their save plumbing, text copies and the primary-view notion;
+`addView` no longer takes a parse flag. A failed write no longer blocks later saves.
+
+Tests: 65 (new `board-document`, ten; owned-mount and flush-board rewritten for the
+document), type check, changed-file lint and production build pass. Not deployed or
+live-checked yet.
+
 ## 2026-10-29 - Address cards and lists by ID (refactor 2.3)
 
 Review refactor 2.3, branch `refactor/id-addressing`. Board modifiers took paths
