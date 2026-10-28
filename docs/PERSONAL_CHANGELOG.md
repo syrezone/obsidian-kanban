@@ -10,7 +10,9 @@ explicit dispose committed drafts. `KanbanBoard.unload()` now commits its open e
 writes start, and a tab switching files commits before leaving. Boards with parse
 errors are skipped. Files: `src/KanbanBoard.tsx`, `src/main.ts`, `src/KanbanView.tsx`.
 66 tests, type check, changed-file lint and build pass (no unit test: the real board
-is not bundled in tests); deployed to the desktop dev vault; live check pending.
+is not bundled in tests); deployed to the desktop dev vault. The user confirms on
+desktop that an unconfirmed card edit now survives plugin unload, tab close and canvas
+card close.
 
 ## 2026-10-29 - Owned embed as one Component; embed API 2 (refactor 2.5)
 
@@ -26,7 +28,8 @@ same step (its branch `feat/kanban-embed-api-2`).
 
 Tests: 66 (owned-mount rewritten on a Component stub, plus plugin unload of a mounted
 embed), type check, changed-file lint and production build pass. Deployed (`main.js`)
-with Maguilanote to the desktop dev vault; live check pending. Ignis not deployed.
+with Maguilanote to the desktop dev vault; the user confirms canvas cards work on
+desktop. Ignis not deployed.
 
 ## 2026-10-29 - One BoardDocument per file for saving and sync (refactor 2.1)
 
