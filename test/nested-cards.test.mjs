@@ -128,6 +128,19 @@ test('nested non-task bullets stay part of the card text', () => {
   assert.deepEqual(card.children, []);
 });
 
+test('nested lists mixing tasks with plain or numbered items stay card text', () => {
+  const mixed = '- [ ] Cat cave\n    - [ ] a task\n    - plain note';
+  const card = parse(md.replace('- [ ] Cat cave', mixed)).children[0].children[1];
+  assert.equal(card.data.titleRaw, 'Cat cave\n- [ ] a task\n- plain note');
+  assert.deepEqual(card.children, []);
+  assert.ok(boardToMd(parse(md.replace('- [ ] Cat cave', mixed))).includes(mixed));
+
+  const numbered = '- [ ] Cat cave\n    1. [ ] first';
+  const ordered = parse(md.replace('- [ ] Cat cave', numbered)).children[0].children[1];
+  assert.equal(ordered.data.titleRaw, 'Cat cave\n1. [ ] first');
+  assert.deepEqual(ordered.children, []);
+});
+
 test('moving a card right nests it as the last child of the card above', () => {
   const board = parse(md);
   const catCave = board.children[0].children[1];

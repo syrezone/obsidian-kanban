@@ -51,7 +51,7 @@ function getEditorClass(app: any) {
 
 export default class KanbanPlugin extends Plugin {
   /** Diagnostic build marker; consumers check embedApiVersion for compatibility. */
-  readonly personalBuild = 'canvas-geometry-4';
+  readonly personalBuild = 'nested-cards-1';
   /** Bump when the mountBoard()/KanbanMount contract changes. */
   readonly embedApiVersion = 1;
   embeddedCleanups = new Set<() => void>();

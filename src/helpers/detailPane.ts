@@ -15,20 +15,51 @@ export function getDetailLeaf(app: App, fromEl?: HTMLElement): WorkspaceLeaf {
   return created;
 }
 
-export function openInDetailPane(app: App, linktext: string, sourcePath: string, fromEl?: HTMLElement) {
+export function openInDetailPane(
+  app: App,
+  linktext: string,
+  sourcePath: string,
+  fromEl?: HTMLElement
+) {
   // openLinkText(..., false) opens in the active leaf; it also creates unresolved notes.
   app.workspace.setActiveLeaf(getDetailLeaf(app, fromEl), { focus: true });
   return app.workspace.openLinkText(linktext, sourcePath, false);
 }
 
-/** The `[[link]]` (without alias) that contains or touches column `ch` of a line. */
-export function wikilinkAt(text: string, ch: number): string | null {
-  const linkRegEx = /!?\[\[([^\]]+)\]\]/g;
+// `[[target|alias]]` or `[text](target)`, either optionally embedded with `!`.
+const internalLinkRegEx = /!?\[\[([^\]]+)\]\]|!?\[[^\]]*\]\(([^)]+)\)/g;
+
+/** Link text for openLinkText, or null for an empty or external (URL) link. */
+function linktextOf(match: RegExpExecArray): string | null {
+  if (match[1] !== undefined) return match[1].split('|')[0].trim() || null;
+  let target = match[2].trim().replace(/^<(.*)>$/, '$1');
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return null;
+  try {
+    target = decodeURI(target);
+  } catch {
+    // Not percent-encoded; use it as written.
+  }
+  return target || null;
+}
+
+/** The internal link (wikilink or Markdown link) that contains or touches column `ch`. */
+export function linkAt(text: string, ch: number): string | null {
+  const linkRegEx = new RegExp(internalLinkRegEx);
   let match: RegExpExecArray | null;
   while ((match = linkRegEx.exec(text))) {
-    if (ch >= match.index && ch <= match.index + match[0].length) {
-      return match[1].split('|')[0].trim() || null;
-    }
+    if (ch >= match.index && ch <= match.index + match[0].length) return linktextOf(match);
+  }
+  return null;
+}
+
+/** A card's note: the first internal link in the first line of its Markdown. */
+export function cardNoteLink(titleRaw: string): string | null {
+  const linkRegEx = new RegExp(internalLinkRegEx);
+  const firstLine = titleRaw.split('\n')[0];
+  let match: RegExpExecArray | null;
+  while ((match = linkRegEx.exec(firstLine))) {
+    const linktext = linktextOf(match);
+    if (linktext) return linktext;
   }
   return null;
 }

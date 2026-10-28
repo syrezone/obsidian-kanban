@@ -64,6 +64,8 @@ export async function mountKanbanBoard(
     const header = root.createDiv({ cls: 'kanban-owned-embed-actions' });
     const content = root.createDiv({ cls: 'view-content' });
     let lastSaved = source;
+    // Our own write in progress; its modify event must not look like an external change.
+    let inFlight: string | undefined;
     let writing = Promise.resolve();
     let conflict: Error;
     owner = {
@@ -83,8 +85,13 @@ export async function mountKanbanBoard(
           if (data === lastSaved) return;
           if (app.vault.getAbstractFileByPath(file.path) !== file)
             throw new Error('Kanban source was deleted.');
-          await app.vault.modify(file, data);
-          lastSaved = data;
+          inFlight = data;
+          try {
+            await app.vault.modify(file, data);
+            lastSaved = data;
+          } finally {
+            inFlight = undefined;
+          }
         });
         return writing;
       },
@@ -123,18 +130,25 @@ export async function mountKanbanBoard(
           .read(file)
           .then(async (data) => {
             if (disposed) return;
-            if (data === owner.data) {
+            // Our own write echoed back; pending local edits are newer, not conflicting.
+            if (data === owner.data || data === inFlight) {
               lastSaved = data;
               return;
             }
+            if (!hasFrontmatterKeyRaw(data)) {
+              conflict = new Error('Source is no longer a Kanban board.');
+              throw conflict;
+            }
+            // Another view (a native tab) is the writer and reloads external changes.
+            if (!board.isPrimary) {
+              lastSaved = data;
+              return;
+            }
+            if (data === lastSaved) return;
             if (owner.data !== lastSaved) {
               conflict = new Error(
                 'Kanban source changed externally while local edits were pending.'
               );
-              throw conflict;
-            }
-            if (!hasFrontmatterKeyRaw(data)) {
-              conflict = new Error('Source is no longer a Kanban board.');
               throw conflict;
             }
             lastSaved = owner.data = data;

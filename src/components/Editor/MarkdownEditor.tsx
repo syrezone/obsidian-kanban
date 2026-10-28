@@ -8,9 +8,9 @@ import { KanbanBoard } from 'src/KanbanBoard';
 import { StateManager } from 'src/StateManager';
 import {
   clearFocusedEditorLinkHandler,
+  linkAt,
   openInDetailPane,
   setFocusedEditorLinkHandler,
-  wikilinkAt,
 } from 'src/helpers/detailPane';
 import { registerEditorCommit } from 'src/helpers/flushBoard';
 import { t } from 'src/lang/helpers';
@@ -119,8 +119,10 @@ export function MarkdownEditor({
   const { view, stateManager } = useContext(KanbanContext);
   const elRef = useRef<HTMLDivElement>();
   const internalRef = useRef<EditorView>();
-  const flushRef = useRef(onFlush);
-  flushRef.current = onFlush;
+  // The editor is created once; its handlers call the latest props, whose item/path
+  // closures change as the board does.
+  const handlers = useRef({ onEnter, onEscape, onSubmit, onFlush, onChange, onPaste });
+  handlers.current = { onEnter, onEscape, onSubmit, onFlush, onChange, onPaste };
 
   useEffect(() => {
     let disposed = false;
@@ -142,7 +144,7 @@ export function MarkdownEditor({
       updateBottomPadding() {}
       onUpdate(update: ViewUpdate, changed: boolean) {
         super.onUpdate(update, changed);
-        onChange && onChange(update);
+        handlers.current.onChange?.(update);
       }
       buildLocalExtensions(): Extension[] {
         const extensions = super.buildLocalExtensions();
@@ -185,14 +187,14 @@ export function MarkdownEditor({
           extensions.push(
             Prec.high(
               EditorView.domEventHandlers({
-                paste: onPaste,
+                paste: (e, cm) => handlers.current.onPaste?.(e, cm),
               })
             )
           );
         }
 
         const makeEnterHandler = (mod: boolean, shift: boolean) => (cm: EditorView) => {
-          const didRun = onEnter(cm, mod, shift);
+          const didRun = handlers.current.onEnter(cm, mod, shift);
           if (didRun) return true;
           if (this.app.vault.getConfig('smartIndentList')) {
             this.editor.newlineAndIndentContinueMarkdownList();
@@ -220,7 +222,7 @@ export function MarkdownEditor({
               {
                 key: 'Escape',
                 run: (cm) => {
-                  onEscape(cm);
+                  handlers.current.onEscape(cm);
                   return false;
                 },
                 preventDefault: true,
@@ -237,7 +239,9 @@ export function MarkdownEditor({
     const app = getEditorAppProxy(view);
     const editor = view.addChild(new (Editor as any)(app, elRef.current, controller));
     const cm: EditorView = editor.cm;
-    const unregisterCommit = registerEditorCommit(view.editorCommits, () => flushRef.current(cm));
+    const unregisterCommit = registerEditorCommit(view.editorCommits, () =>
+      handlers.current.onFlush(cm)
+    );
 
     // Personal build: Obsidian's "follow link"/"open link in new tab" commands (Ctrl/Cmd+Enter
     // by default) run as global hotkeys. While this editor has focus they come here (see
@@ -246,9 +250,9 @@ export function MarkdownEditor({
     linkHandler = () => {
       const head = cm.state.selection.main.head;
       const line = cm.state.doc.lineAt(head);
-      const link = wikilinkAt(line.text, head - line.from);
+      const link = linkAt(line.text, head - line.from);
       if (!link) return false;
-      onSubmit(cm);
+      handlers.current.onSubmit(cm);
       void openInDetailPane(view.app, link, view.file.path, view.contentEl);
       return true;
     };

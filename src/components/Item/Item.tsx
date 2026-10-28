@@ -14,12 +14,12 @@ import { SortPlaceholder } from 'src/dnd/components/SortPlaceholder';
 import { Sortable, StaticSortable } from 'src/dnd/components/Sortable';
 import { DndManagerContext } from 'src/dnd/components/context';
 import { useDragHandle } from 'src/dnd/managers/DragManager';
-import { openInDetailPane } from 'src/helpers/detailPane';
+import { cardNoteLink, openInDetailPane } from 'src/helpers/detailPane';
 import { frontmatterKey } from 'src/parsers/common';
 
+import { Icon } from '../Icon/Icon';
 import { KanbanContext, SearchContext } from '../context';
 import { c } from '../helpers';
-import { Icon } from '../Icon/Icon';
 import { DataTypes, EditState, EditingState, Item, isEditing } from '../types';
 import { ItemCheckbox } from './ItemCheckbox';
 import { ItemContent } from './ItemContent';
@@ -106,14 +106,14 @@ const ItemInner = memo(function ItemInner({
       if ((e.target as HTMLElement).closest('a, input, button')) return;
       e.preventDefault();
       e.stopPropagation();
-      const link = item.data.titleRaw.split('\n')[0].match(/\[\[([^\]|]+)/)?.[1];
+      const link = cardNoteLink(item.data.titleRaw);
       if (link) {
         void openInDetailPane(stateManager.app, link, stateManager.file.path, e.currentTarget);
       } else {
-        void newNoteFromCard(stateManager, boardModifiers, item, path, e.currentTarget);
+        void newNoteFromCard(stateManager, boardModifiers, item, e.currentTarget);
       }
     },
-    [editState, item, path, stateManager, boardModifiers]
+    [editState, item, stateManager, boardModifiers]
   );
 
   const onDoubleClick: JSX.MouseEventHandler<HTMLDivElement> = useCallback(

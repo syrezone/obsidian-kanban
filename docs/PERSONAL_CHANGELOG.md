@@ -1,5 +1,30 @@
 # Personal Changes
 
+## 2026-10-29 - Review fixes for nested cards, links and embed saving
+
+Fixes from the fork review. Build marker is now `nested-cards-1` (embed API still 1).
+
+- Mixed nested lists (tasks plus plain or numbered items) stay card text; before, saving
+  rewrote the plain items as `- [ ]` tasks (`list.ts`).
+- An owned embed no longer treats the echo of its own write as an external conflict
+  when newer edits are pending, and a secondary embed leaves external changes to the
+  primary native tab. Either case used to latch a conflict that failed every later
+  save and `dispose()` (`KanbanEmbed.ts`).
+- Card links: Alt+click, note tasks and Ctrl/Cmd+Enter accept Markdown links as well as
+  wikilinks (`cardNoteLink`/`linkAt`, `detailPane.ts`). In Markdown-link vaults
+  Alt+click used to create a new note on every click.
+- New note from card relinks the card by ID after its awaits, not by a stale path
+  (`findItemPath`, `nestCards.ts`, `ItemMenu.ts`); `$` in links stays literal.
+- Card editors call the latest handlers instead of first-render closures
+  (`MarkdownEditor.tsx`).
+- Note-task toggles change a line only if it still holds the previewed task
+  (`subtasks.ts`, `ItemSubtasks.tsx`).
+
+Tests: 52 (six new regressions, each confirmed failing without its fix), type check,
+changed-file lint and production build pass. Not deployed or live-checked yet. Still
+open: table view does not show child cards; Archive completed ignores checked child
+cards.
+
 ## 2026-10-28/29 - Detail pane, nested cards and linked-note tasks
 
 User request after comparing Kanbase and Notion. Kanbase was not adopted: tag colors,

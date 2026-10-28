@@ -1,13 +1,14 @@
 import update from 'immutability-helper';
-import { Menu, Platform, TFile, TFolder } from 'obsidian';
+import { Menu, Notice, Platform, TFile, TFolder } from 'obsidian';
 import { Dispatch, StateUpdater, useCallback } from 'preact/hooks';
 import { StateManager } from 'src/StateManager';
 import { Path } from 'src/dnd/types';
-import { moveEntity } from 'src/dnd/util/data';
+import { getEntityFromPath, moveEntity } from 'src/dnd/util/data';
 import { t } from 'src/lang/helpers';
 
 import { BoardModifiers } from '../../helpers/boardModifiers';
 import { getDetailLeaf } from '../../helpers/detailPane';
+import { findItemPath } from '../../helpers/nestCards';
 import { applyTemplate, escapeRegExpStr, generateInstanceId } from '../helpers';
 import { EditState, Item } from '../types';
 import {
@@ -29,7 +30,6 @@ export async function newNoteFromCard(
   stateManager: StateManager,
   boardModifiers: BoardModifiers,
   item: Item,
-  path: Path,
   fromEl?: HTMLElement
 ) {
   const prevTitle = item.data.titleRaw.split('\n')[0].trim();
@@ -62,12 +62,18 @@ export async function newNoteFromCard(
 
   await applyTemplate(stateManager, newNoteTemplatePath as string | undefined);
 
-  const newTitleRaw = item.data.titleRaw.replace(
-    prevTitle,
-    stateManager.app.fileManager.generateMarkdownLink(newFile, stateManager.file.path)
-  );
+  // The board may have changed during the awaits; link the card where it is now.
+  const currentPath = findItemPath(stateManager.state, item.id);
+  const current = currentPath && (getEntityFromPath(stateManager.state, currentPath) as Item);
+  if (!current?.data.titleRaw.includes(prevTitle)) {
+    new Notice(`Created ${newFile.basename}, but its card changed meanwhile; link it manually.`);
+    return;
+  }
+  const link = stateManager.app.fileManager.generateMarkdownLink(newFile, stateManager.file.path);
+  // A replacer function keeps `$` in the link literal.
+  const newTitleRaw = current.data.titleRaw.replace(prevTitle, () => link);
 
-  boardModifiers.updateItem(path, stateManager.updateItemContent(item, newTitleRaw));
+  boardModifiers.updateItem(currentPath, stateManager.updateItemContent(current, newTitleRaw));
 }
 
 interface UseItemMenuParams {
@@ -102,7 +108,7 @@ export function useItemMenu({
           i.setIcon('lucide-file-plus-2')
             .setTitle(t('New note from card'))
             .onClick(() =>
-              newNoteFromCard(stateManager, boardModifiers, item, path, e.target as HTMLElement)
+              newNoteFromCard(stateManager, boardModifiers, item, e.target as HTMLElement)
             );
         })
         .addItem((i) => {

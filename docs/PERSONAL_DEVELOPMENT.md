@@ -1,9 +1,10 @@
 # Personal Canvas Geometry Build
 
 Local branch `fix/personal-canvas-geometry` starts at release tag `2.0.51`
-(`8501981`). Runtime marker: `plugin.personalBuild === 'canvas-geometry-4'`
-(diagnostics only). Consumers check `plugin.embedApiVersion === 1`, bumped when
-the `mountBoard()`/`KanbanMount` contract changes.
+(`8501981`). Runtime marker: `plugin.personalBuild === 'nested-cards-1'`
+(diagnostics only; it succeeds `canvas-geometry-4` when the parser gained nested
+cards, with the same embed API). Consumers check `plugin.embedApiVersion === 1`,
+bumped when the `mountBoard()`/`KanbanMount` contract changes.
 Manifest ID/version remain `obsidian-kanban`/`2.0.51`; settings stay native. Branch
 `feat/personal-subtasks` (from `ab53074`) adds the detail pane, nested cards and
 linked-note task preview (last section). Its parser reads indented task lists as child
@@ -57,7 +58,7 @@ corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
 
-All six test files hold 46 tests; the counts per area are given in each section.
+All six test files hold 52 tests; the counts per area are given in each section.
 
 Nineteen tests cover 0.5/1/2 scale, fractional border boxes, asymmetric margins,
 destination scale, pan/pointer anchoring, nested scroll shifts, real manager
@@ -90,7 +91,7 @@ upstream's silent cancel. Escape still cancels. This applies to workspace tabs a
 well as embeds.
 
 Five save-boundary tests verify shared-editor ordering, primary-only writing,
-awaited completion and error propagation (plus 19 geometry, nine owned-mount and two file-tag tests; 35 total). These stub
+awaited completion and error propagation. These stub
 the native save boundary; Obsidian/Ignis save behavior and the actual editor
 callbacks have passed user-guided timed Reset checks on desktop and Ignis: active task/column renames, new-task draft submission and no blank task from an empty form. Concurrent edits during flush, external writes,
 plugin unload and automatic teardown are not guaranteed by this operation.
@@ -123,11 +124,15 @@ board and removes its own DOM. Repeated disposal shares the pending promise;
 failed saving preserves the board and restores interaction. Failed write queues
 stay failed and report errors; there is no automatic retry. Scoped file events
 refresh clean external changes and report conflicting pending edits, source
-conversion or deletion. These guards do not provide concurrent-write merging.
+conversion or deletion. The modify event of the embed's own write (in flight or
+completed) is not a conflict, even when newer edits are pending. An embed that is
+not the primary leaves external changes to the primary native tab, except that a
+source converted away from Kanban still blocks its later saving. These guards do
+not provide concurrent-write merging.
 
-Nine tests cover read-only mount, awaited/idempotent disposal, save failure,
-pending cancellation/shutdown, failed registration, shared primary writing and
-invalid/converted sources. Renderer, DOM and Obsidian event behavior are stubbed;
+Eleven tests cover read-only mount, awaited/idempotent disposal, save failure,
+pending cancellation/shutdown, failed registration, shared primary writing,
+invalid/converted sources, own-write echoes with pending edits and secondary embeds. Renderer, DOM and Obsidian event behavior are stubbed;
 the user confirms normal-tab and owned-host interaction, explicit/timed Reset
 persistence and shared-source checks on desktop and Ignis. The saved-card
 integration's live results are owned by
@@ -160,10 +165,14 @@ Applies to workspace tabs and owned embeds.
   in a card opens it in one reused vertical split; later clicks replace its note. A
   closed pane, or one containing the board itself, gets a new split. Ctrl/Cmd or
   middle click keep native `openLinkText`. **New note from card** opens there too.
-  Alt+click on a card (not editing, not on a link/checkbox/button) opens the note
-  linked in its first line there, or runs New note from card (`newNoteFromCard`,
-  `ItemMenu.ts`) when the first line has no `[[link]]`.
-  In a card editor, Ctrl/Cmd+Enter with the cursor on a `[[link]]` (`wikilinkAt`) saves
+  Alt+click on a card (not editing, not on a link/checkbox/button) opens the card's
+  note there, or runs New note from card (`newNoteFromCard`, `ItemMenu.ts`) when the
+  card has none. A card's note is the first internal link in its first line
+  (`cardNoteLink`): a wikilink or a Markdown link, so vaults using Markdown links work;
+  URLs are skipped. New note from card links the card it finds by ID after creating
+  the note, since the board may change meanwhile; if that card is gone or its first
+  line changed, a Notice asks to link it manually.
+  In a card editor, Ctrl/Cmd+Enter with the cursor on an internal link (`linkAt`) saves
   the card (`onSubmit`) and opens or creates the note there. Obsidian runs these as
   global hotkey commands before any editor keymap, so the existing `executeCommand`
   patch (`main.ts`) routes `editor:follow-link`, `editor:open-link-in-new-leaf` and
@@ -171,9 +180,10 @@ Applies to workspace tabs and owned embeds.
   (`setFocusedEditorLinkHandler`); without a link at the cursor the command runs as usual.
 - **Nested cards (parser contract change).** Task lists indented under a card are
   child cards (`Item.children`), not card text: `splitItemChildren`/`listItemToItem`
-  in `parsers/formats/list.ts`. Child lists must trail the card's own content;
-  otherwise the card keeps everything as text (native behavior). Non-task nested
-  bullets stay text. Metadata (tags, dates, links, block IDs) is read from the card's
+  in `parsers/formats/list.ts`. Only unordered lists whose items are all tasks
+  qualify, and they must trail the card's own content; otherwise the card keeps
+  everything as text (native behavior), so plain or numbered items are never rewritten
+  as tasks. Child cards are written with `-` markers. Metadata (tags, dates, links, block IDs) is read from the card's
   own content only. `itemToMd` writes children one indent unit deeper (`indentLines`,
   tab or four spaces per vault setting). Indented tasks typed into a card's editor
   become children after the existing ones. Hydration, reparse, search (a parent stays
@@ -197,12 +207,17 @@ Applies to workspace tabs and owned embeds.
   test filter and `handleDrop` guard). Hitboxes of nested cards register at any
   depth (`EntityManager.registerDescendants`). Cross-board drops ignore nesting.
   Children of a card in edit mode cannot be dragged.
-- **Note tasks** (`ItemSubtasks.tsx`): when the note linked in a card's first line
-  (not Kanban's last-link `metadata.file`) has non-empty task list items, up to ten
+- **Note tasks** (`ItemSubtasks.tsx`): when the card's note (`cardNoteLink`, not
+  Kanban's last-link `metadata.file`) has non-empty task list items, up to ten
   are previewed under the card with a collapsible `done/total` badge; ticking one
-  rewrites only that line through `vault.process`; refreshes on `metadataCache` changes.
+  rewrites only that line through `vault.process`, and only if the line still holds
+  that task's text; refreshes on `metadataCache` changes.
+- **Card editors** call the latest props for every handler (Enter, Escape, submit,
+  flush, change, paste and Ctrl/Cmd+Enter), so a card that moved while being edited
+  saves to its current path.
 
-Tests: `test/nested-cards.test.mjs` (six: parse depth, metadata isolation, round-trip,
-plain bullets, nest and cross-depth moves; Obsidian/Dataview/DOM stubbed) and
-`test/subtasks.test.mjs` (three: note tasks). Rendering, drag gestures and Obsidian
+Tests: `test/nested-cards.test.mjs` (seven: parse depth, metadata isolation, round-trip,
+plain bullets, mixed/numbered lists, nest and cross-depth moves; Obsidian/Dataview/DOM
+stubbed) and `test/subtasks.test.mjs` (eight: note tasks, stale toggles, link detection
+in both styles, focused-editor routing). Rendering, drag gestures and Obsidian
 events are not covered.

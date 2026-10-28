@@ -21,13 +21,16 @@ export function readLinkedTasks(content: string, taskLines: number[]): LinkedTas
   return tasks;
 }
 
-/** Flip the task on `line`; returns the content unchanged if it is not a task line. */
-export function toggleTaskLine(content: string, line: number, doneChar: string): string {
+/**
+ * Flip the previewed task. Returns the content unchanged when its line no longer holds
+ * that task (the note changed since the preview was read).
+ */
+export function toggleTaskLine(content: string, task: LinkedTask, doneChar: string): string {
+  const { line } = task;
   const lines = content.split('\n');
   const match = lines[line]?.match(taskLineRegEx);
-  if (!match) return content;
+  if (!match || lines[line].slice(match[0].length).trim() !== task.text) return content;
   const check = match[3] === ' ' ? doneChar : ' ';
-  lines[line] =
-    (match[1] ?? '') + match[2] + check + match[4] + lines[line].slice(match[0].length);
+  lines[line] = (match[1] ?? '') + match[2] + check + match[4] + lines[line].slice(match[0].length);
   return lines.join('\n');
 }

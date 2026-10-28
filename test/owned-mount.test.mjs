@@ -18,6 +18,7 @@ const built = await build({
         events = []; editorCommits = new Set(); rendered = Promise.resolve();
         constructor(plugin, owner) { this.plugin = plugin; this.owner = owner; }
         get file() { return this.owner.file; }
+        get isPrimary() { return this.plugin.manager.getAView() === this; }
         get data() { return this.owner.data; } set data(value) { this.owner.data = value; }
         registerEvent(unregister) { this.events.push(unregister); }
         refreshGeometry() { this.refreshed = true; }
@@ -174,6 +175,41 @@ test('external non-Kanban conversion prevents later saving over the note', async
   await new Promise(resolve => setImmediate(resolve));
   mount.view.data = 'kanban:later edit';
   await assert.rejects(mount.dispose(), /no longer a Kanban/);
+  assert.deepEqual(f.writes, []);
+  f.plugin.embeddedCleanups.forEach(fn => fn());
+});
+
+test('the echo of our own write is not a conflict while newer edits are pending', async () => {
+  const f = fixture(); let finish;
+  globalThis.notices = [];
+  f.plugin.app.vault.modify = (_file, data) => new Promise(resolve => {
+    f.setDisk(data); f.writes.push(data); finish = resolve;
+  });
+  const mount = await mountKanbanBoard(f.plugin, f.container, f.file);
+  mount.view.data = 'kanban:first edit';
+  const saving = mount.flush();
+  await new Promise(resolve => setImmediate(resolve));
+  mount.view.data = 'kanban:second edit';
+  f.listeners.get('modify').forEach(fn => fn(f.file));
+  await new Promise(resolve => setImmediate(resolve));
+  finish(); await saving;
+  const disposing = mount.dispose();
+  await new Promise(resolve => setImmediate(resolve));
+  finish(); await disposing;
+  assert.deepEqual(f.writes, ['kanban:first edit', 'kanban:second edit']);
+  assert.deepEqual(globalThis.notices, []);
+});
+
+test('a secondary embed leaves external changes to the primary native tab', async () => {
+  const f = fixture(); let nativeSaves = 0;
+  f.plugin.manager.viewSet.add({ editorCommits: new Set(), owner: { save: async () => { nativeSaves++; } } });
+  const mount = await mountKanbanBoard(f.plugin, f.container, f.file);
+  mount.view.data = 'kanban:pending edit';
+  f.setDisk('kanban:written by the native tab');
+  f.listeners.get('modify').forEach(fn => fn(f.file));
+  await new Promise(resolve => setImmediate(resolve));
+  await mount.flush();
+  assert.equal(nativeSaves, 1);
   assert.deepEqual(f.writes, []);
   f.plugin.embeddedCleanups.forEach(fn => fn());
 });

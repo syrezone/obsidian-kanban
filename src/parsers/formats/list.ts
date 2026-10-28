@@ -49,11 +49,14 @@ interface TaskItem extends ListItem {
   checkChar?: string;
 }
 
-// Personal build: nested task lists are child cards, not part of the card's text.
+// Personal build: nested task lists are child cards, not part of the card's text. Only
+// unordered lists of tasks qualify; saving writes children as `- [ ]`, which would turn
+// plain bullets or numbered items into tasks.
 function isTaskList(node: Content): node is List {
   return (
     node.type === 'list' &&
-    node.children.some((child) => child.checked !== null && child.checked !== undefined)
+    !node.ordered &&
+    node.children.every((child) => child.checked !== null && child.checked !== undefined)
   );
 }
 
@@ -79,7 +82,8 @@ export function listItemToItem(stateManager: StateManager, md: string, listItem:
     id: generateInstanceId(),
     data: listItemToItemData(stateManager, md, listItem),
     children: childLists.reduce<Item[]>(
-      (items, list) => items.concat(list.children.map((child) => listItemToItem(stateManager, md, child))),
+      (items, list) =>
+        items.concat(list.children.map((child) => listItemToItem(stateManager, md, child))),
       []
     ),
   };

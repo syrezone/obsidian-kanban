@@ -1,6 +1,6 @@
-import { App, TFile } from 'obsidian';
+import { App, TFile, getLinkpath } from 'obsidian';
 import { useContext, useEffect, useMemo, useState } from 'preact/hooks';
-import { openInDetailPane } from 'src/helpers/detailPane';
+import { cardNoteLink, openInDetailPane } from 'src/helpers/detailPane';
 import { LinkedTask, readLinkedTasks, toggleTaskLine } from 'src/helpers/subtasks';
 import { getTaskStatusDone } from 'src/parsers/helpers/inlineMetadata';
 
@@ -11,7 +11,6 @@ import { Item } from '../types';
 
 // Personal build: collapsible preview of the tasks in the note linked by the card's first line.
 const MAX_LINKED_TASKS = 10;
-const firstLinkRegEx = /\[\[([^\]|#^]+)/;
 
 function useLinkedTasks(app: App, file?: TFile | null): LinkedTask[] {
   const [tasks, setTasks] = useState<LinkedTask[]>([]);
@@ -56,8 +55,8 @@ export function ItemSubtasks({ item }: { item: Item }) {
 
   // The card's note is the link in its first line (Kanban's metadata.file uses the last link).
   const file = useMemo(() => {
-    const link = item.data.titleRaw.split('\n')[0].match(firstLinkRegEx)?.[1];
-    return link ? app.metadataCache.getFirstLinkpathDest(link.trim(), sourcePath) : null;
+    const link = cardNoteLink(item.data.titleRaw);
+    return link ? app.metadataCache.getFirstLinkpathDest(getLinkpath(link), sourcePath) : null;
   }, [app, item.data.titleRaw, sourcePath]);
   const linked = useLinkedTasks(app, file);
 
@@ -95,7 +94,7 @@ export function ItemSubtasks({ item }: { item: Item }) {
                 onClick={(e) => {
                   e.stopPropagation();
                   void app.vault.process(file, (data) =>
-                    toggleTaskLine(data, task.line, getTaskStatusDone())
+                    toggleTaskLine(data, task, getTaskStatusDone())
                   );
                 }}
               />
