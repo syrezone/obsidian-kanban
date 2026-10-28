@@ -17,6 +17,8 @@ import {
   getScrollIntersection,
 } from '../util/hitbox';
 
+const dropSettleSlackMs = 25;
+
 export interface DragEventData {
   dragEntity?: Entity;
   dragEntityId?: string;
@@ -96,13 +98,17 @@ export class DragManager {
 
     const source = referenceElement || (e.currentTarget as HTMLElement);
     const styles = this.win.getComputedStyle(source);
-    try {
-      this.hostUnchanged = captureHostTransform(source);
-      this.dragScale = elementScale(source);
-    } catch (error) {
-      this.clearDrag();
-      new Notice(String(error));
-      return false;
+    // Only owned embeds live inside a host transform (a scaled canvas); workspace
+    // leaves keep the upstream unscaled drag path.
+    if (source.closest('.kanban-owned-embed')) {
+      try {
+        this.hostUnchanged = captureHostTransform(source);
+        this.dragScale = elementScale(source);
+      } catch (error) {
+        this.clearDrag();
+        new Notice(String(error));
+        return false;
+      }
     }
     // Refresh all registered destinations as well as the source before sorting
     // hides anything. Ancestor transforms need not deliver ResizeObserver.
@@ -127,15 +133,18 @@ export class DragManager {
     ];
 
     this.emitter.emit('dragStart', this.getDragEventData());
-    const watch = () => {
-      if (!this.dragEntity) return;
-      if (!this.hostUnchanged()) {
-        this.cancelDrag();
-        return;
-      }
+    if (this.hostUnchanged) {
+      // A host zoom/pan invalidates every measured hitbox, even without pointer movement.
+      const watch = () => {
+        if (!this.dragEntity) return;
+        if (!this.hostUnchanged()) {
+          this.cancelDrag();
+          return;
+        }
+        this.transformFrame = this.win.requestAnimationFrame(watch);
+      };
       this.transformFrame = this.win.requestAnimationFrame(watch);
-    };
-    this.transformFrame = this.win.requestAnimationFrame(watch);
+    }
     return true;
   }
 
@@ -156,10 +165,6 @@ export class DragManager {
 
   dragMove(e: PointerEvent) {
     if (!this.dragEntity) return;
-    if (this.hostUnchanged && !this.hostUnchanged()) {
-      this.cancelDrag();
-      return;
-    }
     this.dragPosition = { x: e.clientX, y: e.clientY };
     this.emitter.emit('dragMove', this.getDragEventData());
     this.calculateDragIntersect();
@@ -179,13 +184,14 @@ export class DragManager {
       return;
     }
     const destination = this.primaryIntersection?.getHitbox() || this.dragOriginHitbox;
+    // Block a new drag until the drop animation (plus one frame of slack) settles.
     this.dropUntil =
       this.win.performance.now() +
       getDropDuration({
         position: this.dragPosition,
         destination: { x: destination[0], y: destination[1] },
       }) +
-      25;
+      dropSettleSlackMs;
     this.emitter.emit('dragEnd', this.getDragEventData());
     this.clearDrag();
   }

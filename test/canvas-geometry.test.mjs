@@ -114,6 +114,8 @@ function element(win, scale = 1, width = 254.667, height = 35.125) {
     getBoundingClientRect() {
       return this.rect;
     },
+    // Fixtures model sources inside an owned embed unless a test overrides this.
+    closest: (selector) => (selector === '.kanban-owned-embed' ? {} : null),
     removeClass() {},
   };
 }
@@ -302,6 +304,30 @@ test('unsupported rotated host transforms refuse pickup before sorting starts', 
   assert.equal(drag.dragEntity, undefined);
 });
 
+test('workspace-leaf pickup skips host transform checks and stays unscaled', () => {
+  const { win, frames } = host();
+  const source = element(win, 2);
+  source.closest = () => null;
+  source.dataset.hitboxid = 'task';
+  source.parentElement = element(win);
+  source.parentElement.css.transform = 'matrix(1, 0.2, 0, 1, 0, 0)';
+  const emitter = new EventEmitter();
+  const drag = new g.DragManager(
+    win,
+    emitter,
+    new Map([['task', entity('task', [0, 0, 1, 1])]]),
+    new Map()
+  );
+  let start;
+  emitter.on('dragStart', (event) => {
+    start = event;
+  });
+  assert.equal(drag.dragStart({ clientX: 1, clientY: 2 }, source), true);
+  assert.equal(start.dragScale, 1);
+  assert.equal(frames.size, 0);
+  drag.cancelDrag();
+});
+
 test('native SortManager sizes placeholders/translations locally and clears them on cancellation', () => {
   const { win } = host();
   const emitter = new EventEmitter();
@@ -348,6 +374,8 @@ test('native nested ScrollManager hitboxes follow scaled offsets', () => {
   const child = new g.ScrollManager({}, 'board', [], parent);
   child.scrollEl = element(win, 2, 200, 100);
   child.scrollState = { x: 3, y: 4, maxX: 100, maxY: 100 };
+  // Scale is measured on entity creation/refresh, not on every hitbox read.
+  child.measureScale();
   assert.deepEqual(child.getScrollShift(), { x: 20, y: 40 });
   const edge = child.createScrollEntity('top');
   parent.scrollState.y += 5;

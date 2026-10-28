@@ -139,6 +139,7 @@ export class EntityManager {
 
   getEntity(rect: DOMRectReadOnly): Entity {
     const manager = this;
+    manager.scrollParent?.measureScale();
     return {
       scopeId: this.scopeId,
       entityId: this.entityId,
@@ -155,6 +156,7 @@ export class EntityManager {
         return manager.scrollParent?.getScrollShift() || initialScrollShift;
       },
       recalcInitial() {
+        manager.scrollParent?.measureScale();
         this.initial = calculateHitbox(
           manager.measureNode.getBoundingClientRect(),
           manager.scrollParent?.getScreenScrollState() || initialScrollState,

@@ -28,17 +28,20 @@ export async function mountKanbanBoard(
   }
 
   // Install cancellation before the first await, including plugin shutdown.
-  let cancelled = false;
+  let disposed = false;
+  let owner: KanbanBoardOwner;
   let board: KanbanBoard;
   let root: HTMLElement;
-  let timer: number;
-  let disposed = false;
+  let timer = 0;
   let disposing: Promise<void>;
+  const notifySaveFailure = (error: unknown) =>
+    new Notice(`Kanban embed save failed: ${String(error)}`);
   const cleanup = () => {
     if (disposed) return;
-    disposed = cancelled = true;
-    window.clearTimeout(timer);
-    signal?.removeEventListener('abort', abort);
+    disposed = true;
+    // Plugin unload cannot await; start a debounced write instead of dropping it.
+    if (timer) void owner.save().catch(notifySaveFailure);
+    signal?.removeEventListener('abort', cleanup);
     if (board) {
       plugin.removeView(board);
       plugin.removeChild(board);
@@ -46,17 +49,11 @@ export async function mountKanbanBoard(
     root?.remove();
     plugin.embeddedCleanups.delete(cleanup);
   };
-  const abort = () => {
-    if (mounted) return;
-    cancelled = true;
-    // Once mounted, the caller must explicitly await dispose to save first.
-    if (!board || !mounted) cleanup();
-  };
-  let mounted = false;
   plugin.embeddedCleanups.add(cleanup);
-  signal?.addEventListener('abort', abort, { once: true });
+  // Once mounted, the listener is removed: the caller must await dispose to save first.
+  signal?.addEventListener('abort', cleanup, { once: true });
   const assertOpen = () => {
-    if (cancelled || disposed) throw new Error('Kanban mount aborted or disposed.');
+    if (disposed) throw new Error('Kanban mount aborted or disposed.');
   };
 
   try {
@@ -69,7 +66,7 @@ export async function mountKanbanBoard(
     let lastSaved = source;
     let writing = Promise.resolve();
     let conflict: Error;
-    const owner: KanbanBoardOwner = {
+    owner = {
       app,
       containerEl: root,
       contentEl: content,
@@ -78,6 +75,7 @@ export async function mountKanbanBoard(
       scopeId: `embed-${crypto.randomUUID()}`,
       save: () => {
         window.clearTimeout(timer);
+        timer = 0;
         const data = owner.data;
         // Preserve write ordering and propagate failure; a failed queue stays failed.
         writing = writing.then(async () => {
@@ -93,9 +91,7 @@ export async function mountKanbanBoard(
       requestSave: () => {
         window.clearTimeout(timer);
         timer = window.setTimeout(() => {
-          void owner
-            .save()
-            .catch((error) => new Notice(`Kanban embed save failed: ${String(error)}`));
+          void owner.save().catch(notifySaveFailure);
         }, 2000);
       },
       openMarkdown: () => {
@@ -112,14 +108,9 @@ export async function mountKanbanBoard(
     };
     board = plugin.addChild(new KanbanBoard(plugin, owner));
     // A read-only mount must never rewrite the source. Existing state wins over
-    // a disk snapshot when another native tab/embed already owns this file.
-    const existing = plugin.getStateManager(file);
-    if (existing) {
-      await existing.ready;
-      assertOpen();
-      owner.data = existing.getAView().data;
-    }
-    await plugin.addView(board, owner.data, !existing);
+    // a disk snapshot when another native tab/embed already owns this file;
+    // registerView copies that state instead of parsing.
+    await plugin.addView(board, owner.data, !plugin.getStateManager(file));
     assertOpen();
     if (plugin.getStateManager(file).hasError())
       throw new Error('Kanban source could not be parsed.');
@@ -165,8 +156,7 @@ export async function mountKanbanBoard(
         }
       })
     );
-    mounted = true;
-    signal?.removeEventListener('abort', abort);
+    signal?.removeEventListener('abort', cleanup);
     const flush = async () => {
       assertOpen();
       if (conflict) throw conflict;

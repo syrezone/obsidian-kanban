@@ -75,21 +75,6 @@ export const transitions = {
   placeholder: `height ${outOfTheWayTiming}, width ${outOfTheWayTiming}, margin ${outOfTheWayTiming}, border-color ${outOfTheWayTiming}`,
 };
 
-export const isEqual = (point1: Coordinates, point2: Coordinates): boolean =>
-  point1.x === point2.x && point1.y === point2.y;
-
-export const origin: Coordinates = { x: 0, y: 0 };
-
-const moveTo = (offset: Coordinates): string | undefined =>
-  isEqual(offset, origin) ? undefined : `translate(${offset.x}px, ${offset.y}px)`;
-
-export const transforms = {
-  moveTo,
-  drop: (offset: Coordinates) => {
-    return moveTo(offset);
-  },
-};
-
 const dropTimeRange: number = timings.maxDropTime - timings.minDropTime;
 const maxDropTimeAtDistance: number = 1500;
 // will bring a time lower - which makes it faster

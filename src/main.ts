@@ -48,12 +48,16 @@ function getEditorClass(app: any) {
 }
 
 export default class KanbanPlugin extends Plugin {
+  /** Diagnostic build marker; consumers check embedApiVersion for compatibility. */
   readonly personalBuild = 'canvas-geometry-4';
+  /** Bump when the mountBoard()/KanbanMount contract changes. */
+  readonly embedApiVersion = 1;
   embeddedCleanups = new Set<() => void>();
 
   mountBoard(container: HTMLElement, file: TFile, options: { signal?: AbortSignal } = {}) {
     return mountKanbanBoard(this, container, file, options.signal);
   }
+
   settingsTab: KanbanSettingsTab;
   settings: KanbanSettings = {};
 
@@ -230,32 +234,28 @@ export default class KanbanPlugin extends Plugin {
     }
 
     const file = view.file;
+    let manager = this.stateManagers.get(file);
 
-    if (this.stateManagers.has(file)) {
-      const manager = this.stateManagers.get(file);
+    if (manager) {
+      // Joining copies the parsed state, so wait for the first registration.
       await manager.ready;
-      if (this.stateManagers.get(file) !== manager) {
-        reg.viewMap.delete(view.id);
-        throw new Error('Kanban file session closed during registration.');
+      if (this.stateManagers.get(file) !== manager || reg.viewMap.get(view.id) !== view) {
+        if (reg.viewMap.get(view.id) === view) reg.viewMap.delete(view.id);
+        throw new Error('Kanban registration cancelled.');
       }
-      if (reg.viewMap.get(view.id) !== view) throw new Error('Kanban registration cancelled.');
       await manager.registerView(view, data, shouldParseData);
     } else {
-      this.stateManagers.set(
-        file,
-        new StateManager(
-          this.app,
-          view,
-          data,
-          () => this.stateManagers.delete(file),
-          () => this.settings
-        )
+      manager = new StateManager(
+        this.app,
+        view,
+        data,
+        () => this.stateManagers.delete(file),
+        () => this.settings
       );
+      this.stateManagers.set(file, manager);
+      await manager.ready;
     }
 
-    const manager = this.stateManagers.get(file);
-    if (!manager) throw new Error('Kanban registration cancelled.');
-    await manager.ready;
     if (reg.viewMap.get(view.id) !== view || !manager.viewSet.has(view)) {
       throw new Error('Kanban registration cancelled.');
     }

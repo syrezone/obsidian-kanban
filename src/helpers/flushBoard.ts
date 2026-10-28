@@ -19,8 +19,7 @@ export async function flushBoard(manager: FlushManager): Promise<void> {
   }
 
   if (manager.hasError()) throw new Error('Cannot flush a Kanban board with parse errors.');
-  const primary = manager.getAView();
-  if (!primary) throw new Error('Cannot flush a Kanban board without a native writer.');
+  // Callers flush a registered view, so the manager always has a primary writer.
   manager.saveToDisk();
-  await primary.save();
+  await manager.getAView().save();
 }

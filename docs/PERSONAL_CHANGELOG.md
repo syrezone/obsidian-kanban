@@ -1,5 +1,22 @@
 # Personal Changes
 
+## 2026-10-28 - Embed and drag-geometry cleanup
+
+Review cleanup of build 4. Behavior changes: owned-embed transform checks no
+longer run for workspace tabs (removes a new Notice/refusal path from upstream
+drags); scroll scale is cached at entity creation/refresh instead of measured on
+every hit test; the per-move transform check is dropped (animation-frame watcher
+and drop check remain); plugin unload starts a pending embed write instead of
+dropping it. Added `embedApiVersion = 1` as the consumer contract. Simplified
+`KanbanEmbed` to one `disposed` flag, removed the embed's duplicate state copy,
+merged `addView`'s cancellation checks and removed unused `KanbanView`
+pass-throughs, `transforms`, `isEqual`/`origin`, `getHitboxDimensions` and an
+unreachable `flushBoard` guard. Paths: `src/KanbanEmbed.ts`, `src/KanbanView.tsx`,
+`src/main.ts`, `src/dnd/**`, `src/helpers/flushBoard.ts`, tests. 32 tests (one
+obsolete guard test removed, one workspace-tab pickup test added), type check,
+changed-file lint and production build pass. Not yet deployed or checked in
+Obsidian: canvas zoom/pan drags, normal-tab drags and unload during a pending save.
+
 ## 2026-10-28 - Component-owned Kanban mounting
 
 Build `canvas-geometry-4` extracts shared `KanbanBoard` behavior from the native

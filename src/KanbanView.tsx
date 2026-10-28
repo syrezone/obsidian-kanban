@@ -44,9 +44,6 @@ export class KanbanView extends TextFileView {
     );
   }
 
-  get id() {
-    return this.board.id;
-  }
   get emitter() {
     return this.board.emitter;
   }
@@ -62,26 +59,11 @@ export class KanbanView extends TextFileView {
   set viewSettings(value: KanbanViewSettings) {
     this.board.viewSettings = value;
   }
-  get isPrimary() {
-    return this.board.isPrimary;
-  }
-  getBoard() {
-    return this.board.getBoard();
-  }
-  setBoard(...args: Parameters<KanbanBoard['setBoard']>) {
-    return this.board.setBoard(...args);
-  }
   setView(...args: Parameters<KanbanBoard['setView']>) {
     return this.board.setView(...args);
   }
-  getViewState(...args: Parameters<KanbanBoard['getViewState']>) {
-    return this.board.getViewState(...args);
-  }
   getBoardSettings() {
     return this.board.getBoardSettings();
-  }
-  flush() {
-    return this.board.flush();
   }
   getViewType() {
     return kanbanViewType;
@@ -117,7 +99,7 @@ export class KanbanView extends TextFileView {
     this.register(
       this.containerEl.onWindowMigrated(() => {
         this.plugin.removeView(this.board);
-        void this.plugin.addView(this.board, this.data, this.isPrimary);
+        void this.plugin.addView(this.board, this.data, this.board.isPrimary);
       })
     );
   }
@@ -146,8 +128,8 @@ export class KanbanView extends TextFileView {
   getState() {
     return { ...super.getState(), kanbanViewState: { ...this.viewSettings } };
   }
-  onPaneMenu(menu: Menu, source: string, callSuper = true) {
+  onPaneMenu(menu: Menu, source: string) {
     this.board.onPaneMenu(menu, source);
-    if (callSuper) super.onPaneMenu(menu, source);
+    super.onPaneMenu(menu, source);
   }
 }

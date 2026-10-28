@@ -42,6 +42,22 @@ export function DragOverlay({ children }: DragOverlayProps) {
     let scale = 1;
     let font: DragEventData['dragFont'];
     let dropTimer = 0;
+    const overlayStyles = (
+      position: Coordinates,
+      origin: Coordinates,
+      transition?: string,
+      destination?: Coordinates
+    ) => ({
+      ...getDragOverlayStyles(
+        position,
+        origin,
+        dragOriginHitbox,
+        scale,
+        transition,
+        destination
+      ),
+      ...font,
+    });
 
     const dragStart = ({
       dragEntity,
@@ -59,20 +75,14 @@ export function DragOverlay({ children }: DragOverlayProps) {
       scale = dragScale || 1;
       font = dragFont;
       setDragEntity(dragEntity);
-      setStyles({
-        ...getDragOverlayStyles(dragPosition, dragOrigin, dragOriginHitbox, scale),
-        ...font,
-      });
+      setStyles(overlayStyles(dragPosition, dragOrigin));
     };
 
     const dragMove = ({ dragOrigin, dragPosition }: DragEventData) => {
       if (!dragPosition || !dragOrigin) {
         return;
       }
-      setStyles({
-        ...getDragOverlayStyles(dragPosition, dragOrigin, dragOriginHitbox, scale),
-        ...font,
-      });
+      setStyles(overlayStyles(dragPosition, dragOrigin));
     };
 
     const dragEnd = ({ dragOrigin, primaryIntersection, dragPosition }: DragEventData) => {
@@ -89,17 +99,7 @@ export function DragOverlay({ children }: DragOverlayProps) {
 
         const transition = transitions.drop(dropDuration);
 
-        setStyles({
-          ...getDragOverlayStyles(
-            dragPosition,
-            dragOrigin,
-            dragOriginHitbox,
-            scale,
-            transition,
-            dropDestination
-          ),
-          ...font,
-        });
+        setStyles(overlayStyles(dragPosition, dragOrigin, transition, dropDestination));
 
         dropTimer = dndManager.win.setTimeout(() => {
           setDragEntity(undefined);
@@ -146,7 +146,7 @@ export function useIsAnythingDragging() {
     let dropTimer = 0;
     const onDragStart = () => setIsDragging(true);
     const onDragCancel = () => {
-      activeWindow.clearTimeout(dropTimer);
+      dndManager.win.clearTimeout(dropTimer);
       setIsDragging(false);
     };
     const onDragEnd = ({ primaryIntersection, dragPosition }: DragEventData) => {
@@ -160,7 +160,7 @@ export function useIsAnythingDragging() {
         destination: dropDestination,
       });
 
-      dropTimer = activeWindow.setTimeout(() => setIsDragging(false), dropDuration);
+      dropTimer = dndManager.win.setTimeout(() => setIsDragging(false), dropDuration);
     };
 
     const { emitter } = dndManager.dragManager;
@@ -173,7 +173,7 @@ export function useIsAnythingDragging() {
       emitter.off('dragStart', onDragStart);
       emitter.off('dragEnd', onDragEnd);
       emitter.off('dragCancel', onDragCancel);
-      activeWindow.clearTimeout(dropTimer);
+      dndManager.win.clearTimeout(dropTimer);
     };
   }, [dndManager]);
 

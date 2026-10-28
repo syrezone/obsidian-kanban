@@ -294,13 +294,18 @@ export class ScrollManager {
     return [...(this.parent?.getPath() || []), 0];
   }
 
+  /** Measure this scroll chain's scale; drag hot paths reuse the cached value. */
+  measureScale() {
+    this.parent?.measureScale();
+    // A dragged lane is hidden during sorting; retain its captured scale then.
+    if (this.scrollEl?.getBoundingClientRect().width > 0)
+      this.screenScale = elementScale(this.scrollEl);
+  }
+
   getScreenScrollState(): ScrollState {
     // Child refs can initialize before the parent's initNodes(). There is no
     // scroll element/offset to scale yet, matching the native initial state.
     if (!this.scrollEl) return initialScrollState;
-    // A dragged lane is hidden during sorting; retain its captured scale then.
-    if (this.scrollEl.getBoundingClientRect().width > 0)
-      this.screenScale = elementScale(this.scrollEl);
     return { ...this.scrollState, ...screenShift(this.scrollState, this.screenScale) };
   }
 
@@ -315,6 +320,7 @@ export class ScrollManager {
 
   createScrollEntity(side: Side): Entity {
     const manager = this;
+    this.parent?.measureScale();
 
     return {
       scopeId: this.scopeId,
@@ -332,6 +338,7 @@ export class ScrollManager {
         return manager.parent?.getScrollShift() || initialScrollShift;
       },
       recalcInitial() {
+        manager.parent?.measureScale();
         this.initial = calculateScrollHitbox(
           manager.scrollEl.getBoundingClientRect(),
           manager.parent?.getScreenScrollState() || initialScrollState,

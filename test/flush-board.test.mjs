@@ -53,9 +53,3 @@ test('invalid boards do not commit or write; commit errors do not reach the writ
   await assert.rejects(flushBoard(manager), /Invalid edit/);
   assert.deepEqual(events, []);
 });
-
-test('a missing writer is reported instead of claiming a completed save', async () => {
-  const { manager } = fixture();
-  manager.getAView = () => undefined;
-  await assert.rejects(flushBoard(manager), /without a native writer/);
-});
