@@ -15,8 +15,11 @@ for tabs and embeds alike (`src/helpers/merge3.ts`). `KanbanView` routes `save`,
 `addView` no longer takes a parse flag. A failed write no longer blocks later saves.
 
 Tests: 65 (new `board-document`, ten; owned-mount and flush-board rewritten for the
-document), type check, changed-file lint and production build pass. Not deployed or
-live-checked yet.
+document), type check, changed-file lint and production build pass. Deployed
+(`main.js`) to the desktop dev vault; the user confirms on desktop: timed saving in a tab
+and a canvas card, edits kept on close/quit, reload of clean boards and merge of pending
+edits after outside changes, converted and deleted sources, and a tab and canvas card of
+one board staying in step. Ignis not deployed.
 
 ## 2026-10-29 - Address cards and lists by ID (refactor 2.3)
 
