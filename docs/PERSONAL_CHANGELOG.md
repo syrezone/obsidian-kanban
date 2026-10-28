@@ -1,5 +1,24 @@
 # Personal Changes
 
+## 2026-10-29 - Board/host separation and commands in canvas cards (refactor 2.2)
+
+Review refactor 2.2, branch `refactor/board-host`. Delegation ran both ways: the board
+forwarded to a public `owner`, `KanbanView` forwarded `emitter`, `activeEditor`,
+`viewSettings`, `setView` and `getBoardSettings` back to its board, `main.ts` rebuilt
+board ids from `owner.scopeId` and the old path on rename, and every command looked up
+`getActiveViewOfType(KanbanView)`, so boards in canvas cards got no commands or
+hotkeys. Now the board depends on a private `BoardHost`; the view passthroughs are gone
+(callers use `view.board`); the pane-menu source check moved to `KanbanView` while the
+board keeps its menu items (`addMenuItems`, also used by the file explorer menu); a
+board's id is its host's `scopeId`, so a rename only refreshes it and `DragDropApp`
+compares boards' files instead of splitting ids. Commands and forwarded hotkeys act on
+`getActiveBoard()`: a Kanban tab's board, or the last clicked/focused board inside the
+active view (`src/helpers/boardFocus.ts`). Maguilanote's mount API is unchanged.
+
+Tests: 74 (new `board-focus`, two; owned-mount checks rename refresh), type check,
+changed-file lint and build pass. Deployed (`main.js`) to the desktop dev vault; live
+check pending. Ignis not deployed.
+
 ## 2026-10-29 - Child cards can be dragged in canvas cards
 
 User report: in a canvas card, a nested child card could not be picked up; the drag

@@ -60,7 +60,7 @@ corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
 
-All seven test files hold 72 tests; the counts per area are given in each section.
+All eight test files hold 74 tests; the counts per area are given in each section.
 
 Nineteen tests cover 0.5/1/2 scale, fractional border boxes, asymmetric margins,
 destination scale, pan/pointer anchoring, nested scroll shifts, real manager
@@ -94,7 +94,7 @@ workspace tabs and owned embeds alike. Views keep no copy of the text.
   same place, both are kept. A change that reaches disk before its event is merged the
   same way at write time. This matches Obsidian's own policy for text views.
 - A deleted source, or one no longer a Kanban board, stops all saving
-  (`owner.onSourceLost`): a tab of a converted note opens it as Markdown, an embed shows
+  (`BoardHost.onSourceLost`): a tab of a converted note opens it as Markdown, an embed shows
   a Notice. Obsidian closes tabs of deleted files.
 - A failed write rejects, shows a Notice for timed saves, restores the last saved copy
   and keeps the edits pending; the next save retries (no automatic retry loop).
@@ -148,11 +148,29 @@ native parsing/portal layout and rolls back partial registration on failure.
 
 `KanbanBoard.tsx` now owns shared renderer/editor/preview behavior as an Obsidian
 Component. `KanbanView.tsx` adapts real workspace tabs to it. In `KanbanEmbed.ts` one
-`KanbanEmbed` Component, a child of the plugin, is the board's owner (no leaf) and the
+`KanbanEmbed` Component, a child of the plugin, is the board's host (no leaf) and the
 returned handle: it owns its DOM, the board as a child component and the rename event,
 and unloading it (dispose, abort or plugin unload) releases all of them. Plugin unload
 closes embeds before it disposes the documents, because Obsidian unloads children
-first. Both use the existing
+first.
+
+**Board and host.** A board depends on its host through `BoardHost` (app, container
+elements, file, `scopeId`, `addAction`, `openMarkdown`, `onSourceLost`); the host is
+private, and callers use the board (`view.board`), never the host. `KanbanView` keeps
+only what Obsidian requires of a view and routes to its board. A board's id is its
+host's `scopeId` (the leaf id or the embed's id), stable across renames; a rename only
+refreshes the board (`onFileRenamed`). The window portal is keyed by id and file, so a
+tab that opens another file or a renamed file still renders fresh.
+
+**Commands.** Kanban commands (archive completed cards, add a list, view as
+board/table/list, board settings) and forwarded hotkeys (search, previous/next daily
+note) act on `plugin.getActiveBoard()`: a Kanban tab's board, else the board last
+clicked or focused (`src/helpers/boardFocus.ts`, capture-phase `pointerdown`/`focusin`)
+if it is inside the active view, such as a canvas card in the active canvas. Toggling
+Markdown mode stays tab-only. Two tests (`test/board-focus.test.mjs`) cover focusing,
+the active-view rule and clearing.
+
+Both use the existing
 window Preact root, DnD scopes, parser and per-file StateManager. Editors are
 children of their board, not the plugin. Both save through the file's shared
 `BoardDocument` (above). Maguilanote never writes Kanban Markdown. Read-only
@@ -174,7 +192,7 @@ integration's live results are owned by
 [Maguilanote's guide](../../maguilanote-obsidian/docs/KANBAN.md).
 
 Maguilanote 1.2.0 persisted canvas cards are the only consumer and the live test
-host (the earlier diagnostic companion was removed on 2026-10-28). Global Kanban commands in the canvas, popouts/mobile and guaranteed async
+host (the earlier diagnostic companion was removed on 2026-10-28). Popouts/mobile and guaranteed async
 plugin-shutdown saving remain outside current support.
 Synchronous shutdown force-cleans components without an awaited flush. It first
 commits open card editors in every board (like Enter), then starts each document's
@@ -207,9 +225,7 @@ the action runs, not as it was rendered. Inserts are `before`/`after` an ID; mov
 another list use `moveItemToLane` (`top` from the card menu, `bottom` from the table
 view). An ID that no longer exists leaves the board unchanged and shows a Notice.
 
-Scope: card and list actions. Drag-and-drop drops still use the paths of the hit
-entities at drop time (refactor 2.4), and DnD scopes still encode the file path
-(`scopeId:::path`, refactor 2.2). IDs are regenerated on a full parse (opening the
+Scope: card and list actions, and drag-and-drop drops (One drop target, below). IDs are regenerated on a full parse (opening the
 board or an external change), so they protect within a session, which is where the
 async cases arise.
 
