@@ -14,6 +14,7 @@ import { render, unmountComponentAtNode, useEffect, useState } from 'preact/comp
 import { createApp } from './DragDropApp';
 import { KanbanBoard } from './KanbanBoard';
 import { mountKanbanBoard } from './KanbanEmbed';
+import { registerKanbanFileTags } from './fileExplorerTags';
 import { KanbanView, kanbanIcon, kanbanViewType } from './KanbanView';
 import { KanbanSettings, KanbanSettingsTab } from './Settings';
 import { StateManager } from './StateManager';
@@ -116,6 +117,7 @@ export default class KanbanPlugin extends Plugin {
 
     this.registerEditorSuggest(new TimeSuggest(this.app, this));
     this.registerEditorSuggest(new DateSuggest(this.app, this));
+    registerKanbanFileTags(this);
 
     this.registerEvent(
       this.app.workspace.on('window-open', (_: any, win: Window) => {

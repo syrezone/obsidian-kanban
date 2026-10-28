@@ -48,7 +48,7 @@ From this checkout, using the existing Yarn lockfile:
 
 ```powershell
 corepack yarn@1.22.22 install --frozen-lockfile --non-interactive
-node --test test/canvas-geometry.test.mjs test/flush-board.test.mjs test/owned-mount.test.mjs
+node --test test/canvas-geometry.test.mjs test/flush-board.test.mjs test/owned-mount.test.mjs test/file-tags.test.mjs
 corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
@@ -84,7 +84,7 @@ upstream's silent cancel. Escape still cancels. This applies to workspace tabs a
 well as embeds.
 
 Five save-boundary tests verify shared-editor ordering, primary-only writing,
-awaited completion and error propagation (plus 19 geometry and nine owned-mount tests; 33 total). These stub
+awaited completion and error propagation (plus 19 geometry, nine owned-mount and two file-tag tests; 35 total). These stub
 the native save boundary; Obsidian/Ignis save behavior and the actual editor
 callbacks have passed user-guided timed Reset checks on desktop and Ignis: active task/column renames, new-task draft submission and no blank task from an empty form. Concurrent edits during flush, external writes,
 plugin unload and automatic teardown are not guaranteed by this operation.
@@ -132,6 +132,15 @@ host (the earlier diagnostic companion was removed on 2026-10-28). Global Kanban
 plugin-shutdown saving remain outside current support.
 Synchronous shutdown force-cleans components without an awaited flush; it starts
 an embed's pending debounced write but does not commit open editor drafts.
+
+## File Explorer Badge
+
+`src/fileExplorerTags.ts` adds a `kanban` badge (Obsidian's `nav-file-tag`
+style, like the built-in `BOARD` badge for `.board` files) to Markdown files
+whose frontmatter has `kanban-plugin`. It uses the internal file explorer
+`fileItems`, refreshes after layout, metadata, create and rename events, and
+removes its badges on unload. Two stubbed tests cover the badge decision and
+cleanup; a changed explorer API would silently show no badges.
 
 Workspace docs own deployment hashes, raw measurements and current runtime
 results. The contracts above describe the implemented personal API; they do not

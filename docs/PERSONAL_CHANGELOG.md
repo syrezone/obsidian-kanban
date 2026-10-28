@@ -1,5 +1,12 @@
 # Personal Changes
 
+## 2026-10-28 - Kanban badge in the file explorer
+
+User request: show a `KANBAN` badge for Kanban boards, like the `BOARD` badge
+on Maguilanote canvases. Added `src/fileExplorerTags.ts`, registered in
+`src/main.ts`, with `test/file-tags.test.mjs`. 35 tests, type check,
+changed-file lint and build pass.
+
 ## 2026-10-28 - Commit open edits when switching or dragging
 
 User report: double-clicking a second task left the first in edit mode
