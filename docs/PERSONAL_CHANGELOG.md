@@ -1,5 +1,21 @@
 # Personal Changes
 
+## 2026-10-29 - Owned embed as one Component; embed API 2 (refactor 2.5)
+
+Review refactor 2.5, branch `refactor/embed-component`. An embed was a set of closures
+with its own cleanup function, kept in a plugin-wide `embeddedCleanups` set that plugin
+unload had to run by hand, and the handle exposed the internal board as `view`, which
+Maguilanote used to notice that Kanban had unloaded. `KanbanEmbed` is now one Component,
+a child of the plugin, that is both the board's owner and the returned handle; unloading
+it releases the board, its DOM and the rename event, and plugin unload reaches it
+through Obsidian's own child unloading. `embeddedCleanups` is gone. Embed API 2 replaces
+`view` with a `closed` promise; build marker `embed-api-2`. Maguilanote changes in the
+same step (its branch `feat/kanban-embed-api-2`).
+
+Tests: 66 (owned-mount rewritten on a Component stub, plus plugin unload of a mounted
+embed), type check, changed-file lint and production build pass. Deployed (`main.js`)
+with Maguilanote to the desktop dev vault; live check pending. Ignis not deployed.
+
 ## 2026-10-29 - One BoardDocument per file for saving and sync (refactor 2.1)
 
 Review refactor 2.1, branch `refactor/board-document`. Native tabs saved through

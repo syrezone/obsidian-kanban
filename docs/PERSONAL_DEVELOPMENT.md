@@ -1,10 +1,10 @@
 # Personal Canvas Geometry Build
 
 Local branch `fix/personal-canvas-geometry` starts at release tag `2.0.51`
-(`8501981`). Runtime marker: `plugin.personalBuild === 'nested-cards-1'`
-(diagnostics only; it succeeds `canvas-geometry-4` when the parser gained nested
-cards, with the same embed API). Consumers check `plugin.embedApiVersion === 1`,
-bumped when the `mountBoard()`/`KanbanMount` contract changes.
+(`8501981`). Runtime marker: `plugin.personalBuild === 'embed-api-2'`
+(diagnostics only; earlier `canvas-geometry-4` and `nested-cards-1`). Consumers check
+`plugin.embedApiVersion === 2`, bumped when the `mountBoard()`/`KanbanMount` contract
+changes (2: `view` removed, `closed` added).
 Manifest ID/version remain `obsidian-kanban`/`2.0.51`; settings stay native. Branch
 `feat/personal-subtasks` (from `ab53074`) adds the detail pane, nested cards and
 linked-note task preview (last section). Its parser reads indented task lists as child
@@ -58,7 +58,7 @@ corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
 
-All seven test files hold 65 tests; the counts per area are given in each section.
+All seven test files hold 66 tests; the counts per area are given in each section.
 
 Nineteen tests cover 0.5/1/2 scale, fractional border boxes, asymmetric margins,
 destination scale, pan/pointer anchoring, nested scroll shifts, real manager
@@ -138,14 +138,19 @@ save safety.
 ## Owned Mount (build 4)
 
 `plugin.mountBoard(container, file, { signal? })` returns an asynchronous handle
-with `view` (diagnostic access), `refreshGeometry()`, `flush()` and `dispose()`.
-The signal cancels pending mounting only. Mount requires a connected container
+with `closed` (resolves once the board is closed, by `dispose()` or by Kanban
+unloading), `refreshGeometry()`, `flush()` and `dispose()`. The signal cancels
+pending mounting only. Mount requires a connected container
 in the main window and an existing valid Kanban Markdown file; it waits for
 native parsing/portal layout and rolls back partial registration on failure.
 
 `KanbanBoard.tsx` now owns shared renderer/editor/preview behavior as an Obsidian
-Component. `KanbanView.tsx` adapts real workspace tabs to it; `KanbanEmbed.ts`
-provides a component/container owner without a leaf. Both use the existing
+Component. `KanbanView.tsx` adapts real workspace tabs to it. In `KanbanEmbed.ts` one
+`KanbanEmbed` Component, a child of the plugin, is the board's owner (no leaf) and the
+returned handle: it owns its DOM, the board as a child component and the rename event,
+and unloading it (dispose, abort or plugin unload) releases all of them. Plugin unload
+closes embeds before it disposes the documents, because Obsidian unloads children
+first. Both use the existing
 window Preact root, DnD scopes, parser and per-file StateManager. Editors are
 children of their board, not the plugin. Both save through the file's shared
 `BoardDocument` (above). Maguilanote never writes Kanban Markdown. Read-only
@@ -157,9 +162,10 @@ failed saving preserves the board and restores interaction. External changes,
 merging and lost sources follow File Saving and Sync; a lost source makes later
 flushes and disposal reject.
 
-Nine tests cover read-only mount, awaited/idempotent disposal, save failure,
-pending cancellation/shutdown, failed registration, a document shared by two embeds,
-invalid sources and lost-source reporting. Renderer, DOM and Obsidian event behavior are stubbed;
+Ten tests cover read-only mount, awaited/idempotent disposal, save failure,
+plugin unload of a mounted embed, pending cancellation/shutdown, failed registration,
+a document shared by two embeds, invalid sources and lost-source reporting; a
+Component stub follows Obsidian's unload order. Renderer, DOM and Obsidian event behavior are stubbed;
 the user confirms normal-tab and owned-host interaction, explicit/timed Reset
 persistence and shared-source checks on desktop and Ignis. The saved-card
 integration's live results are owned by
