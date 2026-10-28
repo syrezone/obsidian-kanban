@@ -114,8 +114,11 @@ function element(win, scale = 1, width = 254.667, height = 35.125) {
     getBoundingClientRect() {
       return this.rect;
     },
-    // Fixtures model sources inside an owned embed unless a test overrides this.
-    closest: (selector) => (selector === '.kanban-owned-embed' ? {} : null),
+    // Fixtures model sources inside an owned embed unless a test overrides this; the
+    // embed root is the parent element when there is one.
+    closest(selector) {
+      return selector === '.kanban-owned-embed' ? (this.parentElement ?? this) : null;
+    },
     removeClass() {},
   };
 }
@@ -271,6 +274,29 @@ test('host transform change cancels without emitting a drop, including while sta
   assert.equal(cancellations, 1);
   assert.equal(drops, 0);
   assert.equal(drag.dragEntity, undefined);
+});
+
+test("Kanban's own transforms inside the embed, like a shifted parent card, keep the drag", () => {
+  const { win, tick } = host();
+  const source = element(win);
+  source.dataset.hitboxid = 'child';
+  const parentCard = element(win);
+  const root = element(win);
+  source.parentElement = parentCard;
+  parentCard.parentElement = root;
+  source.closest = (selector) => (selector === '.kanban-owned-embed' ? root : null);
+  const emitter = new EventEmitter();
+  const drag = new g.DragManager(win, emitter, new Map([['child', entity('child', [100, 200, 354.667, 235.125], [0, 0, 0])]]), new Map());
+  let cancellations = 0;
+  emitter.on('dragCancel', () => cancellations++);
+  drag.dragStart({ clientX: 120, clientY: 220 }, source);
+  parentCard.css.transform = 'matrix(1, 0, 0, 1, 0, 40)';
+  tick();
+  assert.equal(cancellations, 0);
+  assert.notEqual(drag.dragEntity, undefined);
+  root.css.transform = 'matrix(2, 0, 0, 2, 0, 0)';
+  tick();
+  assert.equal(cancellations, 1);
 });
 
 test('a new pickup waits for the prior native drop animation to settle', () => {

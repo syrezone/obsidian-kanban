@@ -75,10 +75,15 @@ export function previewGeometry(
   };
 }
 
-export function captureHostTransform(source: HTMLElement) {
+/**
+ * Watches the host surface: `root` (the owned embed's root) and its ancestors. Elements
+ * inside `root` are Kanban's own, and sorting moves them with transforms during a drag
+ * (a child card's parent card among them), so they are not watched.
+ */
+export function captureHostTransform(source: HTMLElement, root: HTMLElement) {
   const win = source.win;
   const ancestors: Array<{ element: HTMLElement; transform: string; zoom: string }> = [];
-  for (let element = source.parentElement; element; element = element.parentElement) {
+  for (let element = root; element; element = element.parentElement) {
     const style = win.getComputedStyle(element);
     const matrix = new (win as Window & typeof globalThis).DOMMatrixReadOnly(
       style.transform === 'none' ? undefined : style.transform

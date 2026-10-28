@@ -106,9 +106,10 @@ export class DragManager {
     const styles = this.win.getComputedStyle(source);
     // Only owned embeds live inside a host transform (a scaled canvas); workspace
     // leaves keep the upstream unscaled drag path.
-    if (source.closest('.kanban-owned-embed')) {
+    const embedRoot = source.closest<HTMLElement>('.kanban-owned-embed');
+    if (embedRoot) {
       try {
-        this.hostUnchanged = captureHostTransform(source);
+        this.hostUnchanged = captureHostTransform(source, embedRoot);
         this.dragScale = elementScale(source);
       } catch (error) {
         this.clearDrag();
