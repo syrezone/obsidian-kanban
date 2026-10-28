@@ -5,7 +5,7 @@ import { getDropDuration, removeStyle, setStyle, transitions } from '../util/ani
 import { elementScale, sortDimensions } from '../util/geometry';
 import { SiblingDirection, getSiblingDirection } from '../util/path';
 import { DndManager } from './DndManager';
-import { DragEventData } from './DragManager';
+import { DragEventData, nestColumnStart } from './DragManager';
 
 type EntityAndElement = [Entity, HTMLElement, HTMLElement];
 
@@ -50,9 +50,12 @@ export class SortManager {
     dndManager.dragManager.emitter.on('dragEnter', this.handleDragEnter);
     dndManager.dragManager.emitter.on('dragLeave', this.handleDragLeave);
     dndManager.dragManager.emitter.on('dragCancel', this.handleDragCancel);
+    dndManager.dragManager.emitter.on('dragMove', this.handleNestTarget);
+    dndManager.dragManager.emitter.on('dragEnter', this.handleNestTarget);
   }
 
   destroy() {
+    this.hideDropGhost();
     this.dndManager.win.clearTimeout(this.dragLeaveTimeout);
     this.dndManager.win.clearTimeout(this.dragEndTimeout);
 
@@ -61,13 +64,96 @@ export class SortManager {
     this.dndManager.dragManager.emitter.off('dragEnter', this.handleDragEnter);
     this.dndManager.dragManager.emitter.off('dragLeave', this.handleDragLeave);
     this.dndManager.dragManager.emitter.off('dragCancel', this.handleDragCancel);
+    this.dndManager.dragManager.emitter.off('dragMove', this.handleNestTarget);
+    this.dndManager.dragManager.emitter.off('dragEnter', this.handleNestTarget);
   }
+
+  // Personal build: while a drop would nest, highlight the card above the gap (the new parent).
+  private nestTarget: HTMLElement | null = null;
+  private setNestTarget(el: HTMLElement | null) {
+    if (this.nestTarget === el) return;
+    this.nestTarget?.removeClass('is-nest-parent');
+    el?.addClass('is-nest-parent');
+    this.nestTarget = el;
+  }
+
+  handleNestTarget = ({ nestIntent, primaryIntersection, dragEntity }: DragEventData) => {
+    let parent: HTMLElement | null = null;
+    const ownsTarget = !!primaryIntersection && this.sortables.has(primaryIntersection.entityId);
+    if (nestIntent && ownsTarget) {
+      const targetPath = primaryIntersection.getPath();
+      const targetIndex = targetPath[targetPath.length - 1];
+      let best = -1;
+      this.sortables.forEach(([entity, , measure]) => {
+        if (entity.getData().type !== 'item' || this.hidden.has(entity.entityId)) return;
+        const path = entity.getPath();
+        const index = path[path.length - 1];
+        if (index < targetIndex && index > best) {
+          best = index;
+          parent = measure;
+        }
+      });
+    }
+    this.setNestTarget(parent);
+
+    const isCardDrag = dragEntity?.getData().type === 'item';
+    if (ownsTarget && isCardDrag && primaryIntersection.entityId !== dragEntity.entityId) {
+      this.showDropGhost(primaryIntersection.entityId, !!parent);
+    } else {
+      this.hideDropGhost();
+    }
+  };
+
+  // Personal build: a translucent card in the drop gap previews the resulting level:
+  // full row width for a sibling, the right half for a nested child. It is a fixed
+  // body-level element, positioned from on-screen rects every frame while shown.
+  private dropGhost: HTMLElement | null = null;
+  private dropGhostFrame = 0;
+  private dropGhostTarget: { id: string; nest: boolean } | null = null;
+
+  private showDropGhost(id: string, nest: boolean) {
+    this.dropGhostTarget = { id, nest };
+    if (!this.dropGhost) {
+      this.dropGhost = this.dndManager.win.document.body.createDiv({ cls: 'kanban-plugin__drop-ghost' });
+    }
+    if (!this.dropGhostFrame) this.positionDropGhost();
+  }
+
+  private hideDropGhost() {
+    this.dndManager.win.cancelAnimationFrame(this.dropGhostFrame);
+    this.dropGhostFrame = 0;
+    this.dropGhostTarget = null;
+    this.dropGhost?.remove();
+    this.dropGhost = null;
+  }
+
+  private positionDropGhost = () => {
+    const target = this.dropGhostTarget && this.sortables.get(this.dropGhostTarget.id);
+    const placeholder = this.placeholder?.[2];
+    if (!this.dropGhost || !target || !placeholder || !this.isPlaceholderActive) {
+      this.dropGhost?.hide();
+    } else {
+      // Sorting translates the target's inner card down; its untransformed wrapper (or the
+      // end placeholder) marks the slot the dropped card will take.
+      const rect = target[2].getBoundingClientRect();
+      const gapHeight = placeholder.getBoundingClientRect().height;
+      const left = rect.left + (this.dropGhostTarget.nest ? rect.width * nestColumnStart : 0);
+      setStyle(this.dropGhost, 'left', `${left}px`);
+      setStyle(this.dropGhost, 'top', `${rect.top}px`);
+      setStyle(this.dropGhost, 'width', `${rect.right - left}px`);
+      setStyle(this.dropGhost, 'height', `${gapHeight}px`);
+      this.dropGhost.show();
+    }
+    this.dropGhostFrame = this.dndManager.win.requestAnimationFrame(this.positionDropGhost);
+  };
 
   handleDragCancel = () => {
     const { win } = this.dndManager;
     win.clearTimeout(this.dragEnterTimeout);
     win.clearTimeout(this.dragLeaveTimeout);
     win.clearTimeout(this.dragEndTimeout);
+    this.setNestTarget(null);
+    this.hideDropGhost();
     this.sortables.forEach(([, , measure]) => measure.removeClass('is-dropping'));
     this.resetSelf({
       maintainHidden: false,
@@ -191,7 +277,10 @@ export class SortManager {
     dragPosition,
     dragOriginHitbox,
     dragEntity,
+    nestIntent,
   }: DragEventData) => {
+    this.setNestTarget(null);
+    this.hideDropGhost();
     const resetDroparea = () => {
       if (primaryIntersection && dragEntity) {
         const { acceptsSort } = primaryIntersection.getData();
@@ -256,7 +345,7 @@ export class SortManager {
         this.sortables.has(primaryIntersection.entityId) &&
         primaryIntersectionId !== dragEntityId
       ) {
-        this.dndManager.onDrop(dragEntity, primaryIntersection);
+        this.dndManager.onDrop(dragEntity, primaryIntersection, nestIntent);
       }
 
       this.resetSelf({

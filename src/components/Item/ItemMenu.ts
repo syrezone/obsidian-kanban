@@ -7,6 +7,7 @@ import { moveEntity } from 'src/dnd/util/data';
 import { t } from 'src/lang/helpers';
 
 import { BoardModifiers } from '../../helpers/boardModifiers';
+import { getDetailLeaf } from '../../helpers/detailPane';
 import { applyTemplate, escapeRegExpStr, generateInstanceId } from '../helpers';
 import { EditState, Item } from '../types';
 import {
@@ -22,6 +23,52 @@ const wikilinkRegEx = /!?\[\[([^\]]*)\]\]/g;
 const mdLinkRegEx = /!?\[([^\]]*)\]\([^)]*\)/g;
 const tagRegEx = /#([^\u2000-\u206F\u2E00-\u2E7F'!"#$%&()*+,.:;<=>?@^`{|}~[\]\\\s\n\r]+)/g;
 const condenceWhiteSpaceRE = /\s+/g;
+
+/** Create a note named after the card, open it in the detail pane and link it from the card. */
+export async function newNoteFromCard(
+  stateManager: StateManager,
+  boardModifiers: BoardModifiers,
+  item: Item,
+  path: Path,
+  fromEl?: HTMLElement
+) {
+  const prevTitle = item.data.titleRaw.split('\n')[0].trim();
+  const sanitizedTitle = prevTitle
+    .replace(embedRegEx, '$1')
+    .replace(wikilinkRegEx, '$1')
+    .replace(mdLinkRegEx, '$1')
+    .replace(tagRegEx, '$1')
+    .replace(illegalCharsRegEx, ' ')
+    .trim()
+    .replace(condenceWhiteSpaceRE, ' ');
+
+  const newNoteFolder = stateManager.getSetting('new-note-folder');
+  const newNoteTemplatePath = stateManager.getSetting('new-note-template');
+
+  const targetFolder = newNoteFolder
+    ? (stateManager.app.vault.getAbstractFileByPath(newNoteFolder as string) as TFolder)
+    : stateManager.app.fileManager.getNewFileParent(stateManager.file.path);
+
+  const newFile = (await (stateManager.app.fileManager as any).createNewMarkdownFile(
+    targetFolder,
+    sanitizedTitle
+  )) as TFile;
+
+  const newLeaf = getDetailLeaf(stateManager.app, fromEl);
+
+  await newLeaf.openFile(newFile);
+
+  stateManager.app.workspace.setActiveLeaf(newLeaf, false, true);
+
+  await applyTemplate(stateManager, newNoteTemplatePath as string | undefined);
+
+  const newTitleRaw = item.data.titleRaw.replace(
+    prevTitle,
+    stateManager.app.fileManager.generateMarkdownLink(newFile, stateManager.file.path)
+  );
+
+  boardModifiers.updateItem(path, stateManager.updateItemContent(item, newTitleRaw));
+}
 
 interface UseItemMenuParams {
   setEditState: Dispatch<StateUpdater<EditState>>;
@@ -54,44 +101,9 @@ export function useItemMenu({
         .addItem((i) => {
           i.setIcon('lucide-file-plus-2')
             .setTitle(t('New note from card'))
-            .onClick(async () => {
-              const prevTitle = item.data.titleRaw.split('\n')[0].trim();
-              const sanitizedTitle = prevTitle
-                .replace(embedRegEx, '$1')
-                .replace(wikilinkRegEx, '$1')
-                .replace(mdLinkRegEx, '$1')
-                .replace(tagRegEx, '$1')
-                .replace(illegalCharsRegEx, ' ')
-                .trim()
-                .replace(condenceWhiteSpaceRE, ' ');
-
-              const newNoteFolder = stateManager.getSetting('new-note-folder');
-              const newNoteTemplatePath = stateManager.getSetting('new-note-template');
-
-              const targetFolder = newNoteFolder
-                ? (stateManager.app.vault.getAbstractFileByPath(newNoteFolder as string) as TFolder)
-                : stateManager.app.fileManager.getNewFileParent(stateManager.file.path);
-
-              const newFile = (await (stateManager.app.fileManager as any).createNewMarkdownFile(
-                targetFolder,
-                sanitizedTitle
-              )) as TFile;
-
-              const newLeaf = stateManager.app.workspace.splitActiveLeaf();
-
-              await newLeaf.openFile(newFile);
-
-              stateManager.app.workspace.setActiveLeaf(newLeaf, false, true);
-
-              await applyTemplate(stateManager, newNoteTemplatePath as string | undefined);
-
-              const newTitleRaw = item.data.titleRaw.replace(
-                prevTitle,
-                stateManager.app.fileManager.generateMarkdownLink(newFile, stateManager.file.path)
-              );
-
-              boardModifiers.updateItem(path, stateManager.updateItemContent(item, newTitleRaw));
-            });
+            .onClick(() =>
+              newNoteFromCard(stateManager, boardModifiers, item, path, e.target as HTMLElement)
+            );
         })
         .addItem((i) => {
           i.setIcon('lucide-link')

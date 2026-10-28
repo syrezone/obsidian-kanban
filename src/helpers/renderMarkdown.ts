@@ -1,6 +1,8 @@
 import { Keymap, Menu } from 'obsidian';
 import { KanbanBoard } from 'src/KanbanBoard';
 
+import { openInDetailPane } from './detailPane';
+
 const noBreakSpace = /\u00A0/g;
 
 interface NormalizedPath {
@@ -57,7 +59,13 @@ export function bindMarkdownEvents(view: KanbanBoard) {
     if (!link) return;
 
     evt.preventDefault();
-    app.workspace.openLinkText(link.href, view.file.path, Keymap.isModEvent(evt));
+    // Personal build: plain clicks reuse the right detail pane; modifiers keep native behavior.
+    const paneType = Keymap.isModEvent(evt);
+    if (paneType) {
+      app.workspace.openLinkText(link.href, view.file.path, paneType);
+    } else {
+      void openInDetailPane(app, link.href, view.file.path, contentEl);
+    }
   };
 
   contentEl.on('click', 'a.internal-link', onLinkClick);

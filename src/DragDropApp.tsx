@@ -19,6 +19,7 @@ import {
   updateEntity,
 } from './dnd/util/data';
 import { getBoardModifiers } from './helpers/boardModifiers';
+import { nestIntoPrevious } from './helpers/nestCards';
 import KanbanPlugin from './main';
 import { frontmatterKey } from './parsers/common';
 import {
@@ -40,7 +41,7 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
   const portals: JSX.Element[] = views.map((view) => <View key={view.id} view={view} />);
 
   const handleDrop = useCallback(
-    (dragEntity: Entity, dropEntity: Entity) => {
+    (dragEntity: Entity, dropEntity: Entity, nestIntent?: boolean) => {
       if (!dragEntity || !dropEntity) {
         return;
       }
@@ -49,7 +50,7 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
         const data = dragEntity.getData();
         const stateManager = plugin.getStateManagerFromViewID(data.viewId, data.win);
         const dropPath = dropEntity.getPath();
-        const destinationParent = getEntityFromPath(stateManager.state, dropPath.slice(0, -1));
+        const destinationParent = getEntityFromPath(stateManager.state, dropPath.slice(0, 1));
 
         try {
           const items: Item[] = data.content.map((title: string) => {
@@ -102,6 +103,14 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
 
       // Same board
       if (sourceFile === destinationFile) {
+        // Personal build: never drop a card into its own nested child cards.
+        if (
+          dropPath.length > dragPath.length &&
+          dragPath.every((step, i) => dropPath[i] === step)
+        ) {
+          return;
+        }
+
         const view = plugin.getKanbanView(dragEntity.scopeId, dragEntityData.win);
         const stateManager = plugin.stateManagers.get(view.file);
 
@@ -166,19 +175,24 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
             });
           }
 
+          const placed =
+            nestIntent && entity.type === DataTypes.Item
+              ? nestIntoPrevious(newBoard, entity.id)
+              : newBoard;
+
           // Remove sorting in the destination lane
-          const destinationParentPath = dropPath.slice(0, -1);
+          const destinationParentPath = dropPath.slice(0, 1);
           const destinationParent = getEntityFromPath(board, destinationParentPath);
 
           if (destinationParent?.data?.sorted !== undefined) {
-            return updateEntity(newBoard, destinationParentPath, {
+            return updateEntity(placed, destinationParentPath, {
               data: {
                 $unset: ['sorted'],
               },
             });
           }
 
-          return newBoard;
+          return placed;
         });
       }
 

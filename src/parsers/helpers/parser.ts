@@ -36,6 +36,15 @@ export function indentNewLines(str: string) {
   return str.trim().replace(/(?:\r\n|\n)/g, useTab ? '\n\t' : '\n    ');
 }
 
+/** Personal build: indent every non-empty line by one list level (tab or four spaces). */
+export function indentLines(str: string) {
+  const unit = (app.vault as any).getConfig('useTab') ? '\t' : '    ';
+  return str
+    .split('\n')
+    .map((line) => (line ? unit + line : line))
+    .join('\n');
+}
+
 export function addBlockId(str: string, item: Item) {
   if (!item.data.blockId) return str;
 

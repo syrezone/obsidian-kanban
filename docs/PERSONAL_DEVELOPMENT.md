@@ -48,7 +48,7 @@ From this checkout, using the existing Yarn lockfile:
 
 ```powershell
 corepack yarn@1.22.22 install --frozen-lockfile --non-interactive
-node --test test/canvas-geometry.test.mjs test/flush-board.test.mjs test/owned-mount.test.mjs test/file-tags.test.mjs
+node --test test/canvas-geometry.test.mjs test/flush-board.test.mjs test/owned-mount.test.mjs test/file-tags.test.mjs test/subtasks.test.mjs test/nested-cards.test.mjs
 corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
@@ -145,3 +145,58 @@ cleanup; a changed explorer API would silently show no badges.
 Workspace docs own deployment hashes, raw measurements and current runtime
 results. The contracts above describe the implemented personal API; they do not
 guarantee failed-write recovery or source deletion during active editing.
+
+## Detail Pane, Nested Cards and Note Tasks
+
+Applies to workspace tabs and owned embeds.
+
+- **Detail pane** (`src/helpers/detailPane.ts`): a plain click on an internal link
+  in a card opens it in one reused vertical split; later clicks replace its note. A
+  closed pane, or one containing the board itself, gets a new split. Ctrl/Cmd or
+  middle click keep native `openLinkText`. **New note from card** opens there too.
+  Alt+click on a card (not editing, not on a link/checkbox/button) opens the note
+  linked in its first line there, or runs New note from card (`newNoteFromCard`,
+  `ItemMenu.ts`) when the first line has no `[[link]]`.
+  In a card editor, Ctrl/Cmd+Enter with the cursor on a `[[link]]` (`wikilinkAt`) saves
+  the card (`onSubmit`) and opens or creates the note there. Obsidian runs these as
+  global hotkey commands before any editor keymap, so the existing `executeCommand`
+  patch (`main.ts`) routes `editor:follow-link`, `editor:open-link-in-new-leaf` and
+  `editor:open-link-in-new-split` to the focused card editor's handler
+  (`setFocusedEditorLinkHandler`); without a link at the cursor the command runs as usual.
+- **Nested cards (parser contract change).** Task lists indented under a card are
+  child cards (`Item.children`), not card text: `splitItemChildren`/`listItemToItem`
+  in `parsers/formats/list.ts`. Child lists must trail the card's own content;
+  otherwise the card keeps everything as text (native behavior). Non-task nested
+  bullets stay text. Metadata (tags, dates, links, block IDs) is read from the card's
+  own content only. `itemToMd` writes children one indent unit deeper (`indentLines`,
+  tab or four spaces per vault setting). Indented tasks typed into a card's editor
+  become children after the existing ones. Hydration, reparse, search (a parent stays
+  visible when a child matches), preview cache, duplicate (new child IDs), move to
+  top/bottom (within the parent) and lane completion (`path[0]`) handle any depth.
+  Archiving moves a card with its children. Lane counts include top-level cards only.
+- **Rendering**: `DraggableItem` renders children inside its `Droppable` with a nested
+  `Sortable`, the same `Items` component and a `SortPlaceholder`, so child paths are
+  `[lane, card, child, ...]` and share the lane's scroll manager. A chevron collapses
+  children (per mounted card); collapsed lists are not mounted.
+- **Drag between levels**: the hovered target row has two columns.
+  `DragManager.getNestIntent` sets `nestIntent` when the pointer is right of 50% of
+  the target's width (viewport hitbox, so any canvas scale): left half drops as a
+  sibling, right half nests.
+  A translucent body-level ghost (`kanban-plugin__drop-ghost`, `SortManager`) fills the
+  drop gap: full row width for a sibling, the right half for a child. It is positioned
+  from on-screen rects every animation frame while shown and removed on drop/cancel. `SortManager` outlines the card above the gap (`is-nest-parent`); on drop
+  `nestIntoPrevious` (`src/helpers/nestCards.ts`) makes the moved card that card's
+  last child. Hovering inside a card's child list sorts among the children. Sorting
+  geometry itself is unchanged. A card cannot be dropped into its own subtree (hit
+  test filter and `handleDrop` guard). Hitboxes of nested cards register at any
+  depth (`EntityManager.registerDescendants`). Cross-board drops ignore nesting.
+  Children of a card in edit mode cannot be dragged.
+- **Note tasks** (`ItemSubtasks.tsx`): when the note linked in a card's first line
+  (not Kanban's last-link `metadata.file`) has non-empty task list items, up to ten
+  are previewed under the card with a collapsible `done/total` badge; ticking one
+  rewrites only that line through `vault.process`; refreshes on `metadataCache` changes.
+
+Tests: `test/nested-cards.test.mjs` (six: parse depth, metadata isolation, round-trip,
+plain bullets, nest and cross-depth moves; Obsidian/Dataview/DOM stubbed) and
+`test/subtasks.test.mjs` (three: note tasks). Rendering, drag gestures and Obsidian
+events are not covered.

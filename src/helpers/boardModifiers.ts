@@ -79,15 +79,16 @@ export function getBoardModifiers(view: KanbanBoard, stateManager: StateManager)
       });
     },
 
+    // Personal build: nested child cards move within their own parent.
     moveItemToTop: (path: Path) => {
-      stateManager.setState((boardData) => moveEntity(boardData, path, [path[0], 0]));
+      stateManager.setState((boardData) => moveEntity(boardData, path, [...path.slice(0, -1), 0]));
     },
 
     moveItemToBottom: (path: Path) => {
       stateManager.setState((boardData) => {
-        const laneIndex = path[0];
-        const lane = boardData.children[laneIndex];
-        return moveEntity(boardData, path, [laneIndex, lane.children.length]);
+        const parentPath = path.slice(0, -1);
+        const parent = getEntityFromPath(boardData, parentPath);
+        return moveEntity(boardData, path, [...parentPath, parent.children.length]);
       });
     },
 
@@ -253,11 +254,16 @@ export function getBoardModifiers(view: KanbanBoard, stateManager: StateManager)
     duplicateEntity: (path: Path) => {
       stateManager.setState((boardData) => {
         const entity = getEntityFromPath(boardData, path);
-        const entityWithNewID = update(entity, {
-          id: {
-            $set: generateInstanceId(),
-          },
-        });
+        // Personal build: duplicated cards give nested child cards new IDs too.
+        const withNewIds = (item: Item): Item =>
+          update(item, {
+            id: { $set: generateInstanceId() },
+            children: { $set: (item.children ?? []).map(withNewIds) },
+          });
+        const entityWithNewID =
+          entity.type === DataTypes.Item
+            ? withNewIds(entity as Item)
+            : update(entity, { id: { $set: generateInstanceId() } });
 
         if (entity.type === DataTypes.Lane) {
           const collapseState = view.getViewState('list-collapse');

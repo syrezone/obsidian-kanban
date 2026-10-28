@@ -6,6 +6,12 @@ import { EditorPosition, Editor as ObsidianEditor, Platform } from 'obsidian';
 import { MutableRefObject, useContext, useEffect, useRef } from 'preact/compat';
 import { KanbanBoard } from 'src/KanbanBoard';
 import { StateManager } from 'src/StateManager';
+import {
+  clearFocusedEditorLinkHandler,
+  openInDetailPane,
+  setFocusedEditorLinkHandler,
+  wikilinkAt,
+} from 'src/helpers/detailPane';
 import { registerEditorCommit } from 'src/helpers/flushBoard';
 import { t } from 'src/lang/helpers';
 
@@ -118,6 +124,7 @@ export function MarkdownEditor({
 
   useEffect(() => {
     let disposed = false;
+    let linkHandler: (() => boolean) | null = null;
     class Editor extends view.plugin.MarkdownEditor {
       isKanbanEditor = true;
 
@@ -147,6 +154,7 @@ export function MarkdownEditor({
             EditorView.domEventHandlers({
               focus: (evt) => {
                 view.activeEditor = this.owner;
+                if (linkHandler) setFocusedEditorLinkHandler(linkHandler);
                 if (Platform.isMobile) {
                   view.contentEl.addClass('is-mobile-editing');
                 }
@@ -161,6 +169,7 @@ export function MarkdownEditor({
                 return true;
               },
               blur: () => {
+                if (linkHandler) clearFocusedEditorLinkHandler(linkHandler);
                 if (Platform.isMobile) {
                   view.contentEl.removeClass('is-mobile-editing');
                   this.app.mobileToolbar.update();
@@ -230,6 +239,21 @@ export function MarkdownEditor({
     const cm: EditorView = editor.cm;
     const unregisterCommit = registerEditorCommit(view.editorCommits, () => flushRef.current(cm));
 
+    // Personal build: Obsidian's "follow link"/"open link in new tab" commands (Ctrl/Cmd+Enter
+    // by default) run as global hotkeys. While this editor has focus they come here (see
+    // registerMonkeyPatches): a [[link]] at the cursor saves the card first, then opens or
+    // creates the note in the reused detail pane. Without a link the command runs as usual.
+    linkHandler = () => {
+      const head = cm.state.selection.main.head;
+      const line = cm.state.doc.lineAt(head);
+      const link = wikilinkAt(line.text, head - line.from);
+      if (!link) return false;
+      onSubmit(cm);
+      void openInDetailPane(view.app, link, view.file.path, view.contentEl);
+      return true;
+    };
+    if (cm.hasFocus) setFocusedEditorLinkHandler(linkHandler);
+
     internalRef.current = cm;
     if (editorRef) editorRef.current = cm;
 
@@ -256,6 +280,7 @@ export function MarkdownEditor({
 
     return () => {
       disposed = true;
+      clearFocusedEditorLinkHandler(linkHandler);
       unregisterCommit();
       if (Platform.isMobile) {
         cm.dom.win.removeEventListener('keyboardDidShow', onShow);

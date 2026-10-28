@@ -86,16 +86,12 @@ export class EntityManager {
 
           if (!this.parent || this.parent.isVisible) {
             this.dndManager.registerHitboxEntity(this.entityId, entity, win);
-            this.children.forEach((child, childId) => {
-              this.dndManager.registerHitboxEntity(childId, child.entity, win);
-            });
+            this.registerDescendants(win);
             this.setVisibility(true);
           }
         } else {
           this.dndManager.unregisterHitboxEntity(this.entityId, win);
-          this.children.forEach((_, childId) => {
-            this.dndManager.unregisterHitboxEntity(childId, win);
-          });
+          this.unregisterDescendants(win);
           this.parent?.children.delete(this.entityId);
           this.dndManager.unobserveResize(measureNode);
           this.setVisibility(false);
@@ -111,6 +107,21 @@ export class EntityManager {
       });
       this.setVisibility(true);
     }
+  }
+
+  // Personal build: nested child cards register at any depth, not only direct children.
+  private registerDescendants(win: Window) {
+    this.children.forEach((child, childId) => {
+      this.dndManager.registerHitboxEntity(childId, child.entity, win);
+      child.manager.registerDescendants(win);
+    });
+  }
+
+  private unregisterDescendants(win: Window) {
+    this.children.forEach((child, childId) => {
+      this.dndManager.unregisterHitboxEntity(childId, win);
+      child.manager.unregisterDescendants(win);
+    });
   }
 
   setVisibility(isVisible: boolean) {

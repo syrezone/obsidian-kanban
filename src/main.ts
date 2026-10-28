@@ -20,6 +20,7 @@ import { KanbanSettings, KanbanSettingsTab } from './Settings';
 import { StateManager } from './StateManager';
 import { DateSuggest, TimeSuggest } from './components/Editor/suggest';
 import { getParentWindow } from './dnd/util/getWindow';
+import { linkCommandIds, runFocusedEditorLinkHandler } from './helpers/detailPane';
 import { hasFrontmatterKey } from './helpers';
 import { t } from './lang/helpers';
 import { basicFrontmatter, frontmatterKey } from './parsers/common';
@@ -757,6 +758,9 @@ export default class KanbanPlugin extends Plugin {
         around((app as any).commands, {
           executeCommand(next) {
             return function (command: any) {
+              // Personal build: open links from a focused card editor in the detail pane.
+              if (linkCommandIds.has(command?.id) && runFocusedEditorLinkHandler()) return true;
+
               const view = app.workspace.getActiveViewOfType(KanbanView);
 
               if (view && command?.id) {

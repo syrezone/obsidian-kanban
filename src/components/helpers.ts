@@ -42,8 +42,9 @@ export function maybeCompleteForMove(
   destinationPath: Path,
   item: Item
 ): { next: Item; replacement?: Item } {
-  const sourceParent = getEntityFromPath(sourceBoard, sourcePath.slice(0, -1));
-  const destinationParent = getEntityFromPath(destinationBoard, destinationPath.slice(0, -1));
+  // Personal build: completion follows the lane, also for nested child cards.
+  const sourceParent = getEntityFromPath(sourceBoard, sourcePath.slice(0, 1));
+  const destinationParent = getEntityFromPath(destinationBoard, destinationPath.slice(0, 1));
 
   const oldShouldComplete = sourceParent?.data?.shouldMarkItemsComplete;
   const newShouldComplete = destinationParent?.data?.shouldMarkItemsComplete;
@@ -70,6 +71,8 @@ export function maybeCompleteForMove(
     itemStrings.forEach((str, i) => {
       if (i === thisIndex) {
         next = destinationStateManager.getNewItem(str, checkChars[i]);
+        next.id = item.id;
+        next.children = item.children;
       } else {
         replacement = destinationStateManager.getNewItem(str, checkChars[i]);
       }
@@ -370,11 +373,15 @@ export function useSearchValue(
     if (query) {
       board.children.forEach((lane) => {
         let laneMatched = false;
+        // Personal build: a card stays visible when it or a nested child card matches.
+        const matchItem = (item: Item): boolean => {
+          const childMatched = (item.children ?? []).map(matchItem).some(Boolean);
+          const matched = item.data.titleSearch.includes(query) || childMatched;
+          if (matched) items.add(item);
+          return matched;
+        };
         lane.children.forEach((item) => {
-          if (item.data.titleSearch.includes(query)) {
-            laneMatched = true;
-            items.add(item);
-          }
+          if (matchItem(item)) laneMatched = true;
         });
         if (laneMatched) lanes.add(lane);
       });

@@ -5,7 +5,7 @@ import { Entity } from '../types';
 import { getParentWindow } from '../util/getWindow';
 import { DragManager } from './DragManager';
 
-export type DropHandler = (dragEntity: Entity, dropEntity: Entity) => void;
+export type DropHandler = (dragEntity: Entity, dropEntity: Entity, nestIntent?: boolean) => void;
 
 export class DndManager {
   win: Window;

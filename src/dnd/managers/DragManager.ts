@@ -18,6 +18,8 @@ import {
 } from '../util/hitbox';
 
 const dropSettleSlackMs = 25;
+// Personal build: a pointer right of this fraction of the target row's width nests the card.
+export const nestColumnStart = 0.5;
 
 export interface DragEventData {
   dragEntity?: Entity;
@@ -30,6 +32,8 @@ export interface DragEventData {
   dragPosition?: Coordinates;
   primaryIntersection?: Entity;
   scrollIntersections?: [Entity, number][];
+  /** Personal build: the dragged card is moved right, so the drop nests it into the card above. */
+  nestIntent?: boolean;
 }
 
 export interface ScrollEventData extends DragEventData {
@@ -49,6 +53,7 @@ export class DragManager {
   dragEntityId?: string;
   dragEntityMargin?: Hitbox;
   dragScale: number = 1;
+  nestIntent = false;
   dragFont?: { fontSize: string; lineHeight: string };
   private hostUnchanged?: () => boolean;
   private transformFrame = 0;
@@ -87,6 +92,7 @@ export class DragManager {
       dragPosition: this.dragPosition,
       primaryIntersection: this.primaryIntersection,
       scrollIntersection: this.scrollIntersection,
+      nestIntent: this.nestIntent,
     };
   }
 
@@ -166,6 +172,7 @@ export class DragManager {
   dragMove(e: PointerEvent) {
     if (!this.dragEntity) return;
     this.dragPosition = { x: e.clientX, y: e.clientY };
+    this.nestIntent = this.getNestIntent();
     this.emitter.emit('dragMove', this.getDragEventData());
     this.calculateDragIntersect();
   }
@@ -192,6 +199,7 @@ export class DragManager {
         destination: { x: destination[0], y: destination[1] },
       }) +
       dropSettleSlackMs;
+    this.nestIntent = this.getNestIntent();
     this.emitter.emit('dragEnd', this.getDragEventData());
     this.clearDrag();
   }
@@ -206,6 +214,7 @@ export class DragManager {
     this.transformFrame = 0;
     this.hostUnchanged = undefined;
     this.dragScale = 1;
+    this.nestIntent = false;
     this.dragFont = undefined;
     this.dragEntityMargin = undefined;
     this.dragEntity = undefined;
@@ -243,6 +252,18 @@ export class DragManager {
     this.dragOverTimeout = this.win.setTimeout(callback, 351);
   }
 
+  /**
+   * Personal build: the target row has two columns. With the pointer in the left half the
+   * card drops as a sibling; in the right half it nests into the card above the drop gap.
+   * Hitboxes and the pointer are both viewport units, so this holds at any canvas scale.
+   */
+  private getNestIntent() {
+    if (!this.dragEntity || !this.dragPosition || !this.primaryIntersection) return false;
+    if (this.dragEntity.getData().type !== 'item') return false;
+    const [left, , right] = this.primaryIntersection.getHitbox();
+    return right > left && (this.dragPosition.x - left) / (right - left) > nestColumnStart;
+  }
+
   calculateDragIntersect() {
     if (!this.dragEntity || !this.dragPosition || !this.dragOrigin || !this.dragOriginHitbox) {
       return;
@@ -255,10 +276,21 @@ export class DragManager {
     const scrollEntities: Entity[] = [];
     const scrollHitboxes: Hitbox[] = [];
 
+    // Personal build: a card cannot be dropped into its own nested child cards.
+    const dragPath = this.dragEntity.getPath();
+    const insideDragged = (entity: Entity) => {
+      const path = entity.getPath();
+      return path.length > dragPath.length && dragPath.every((step, i) => path[i] === step);
+    };
+
     this.hitboxEntities.forEach((entity) => {
       const data = entity.getData();
 
-      if (win === data.win && (data.accepts.includes(type) || data.acceptsSort?.includes(type))) {
+      if (
+        win === data.win &&
+        (data.accepts.includes(type) || data.acceptsSort?.includes(type)) &&
+        !insideDragged(entity)
+      ) {
         hitboxEntities.push(entity);
         hitboxHitboxes.push(entity.getHitbox());
       }

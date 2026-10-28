@@ -135,12 +135,19 @@ export function hydrateItem(stateManager: StateManager, item: Item) {
   return item;
 }
 
+/** Personal build: hydrate a card and its nested child cards. */
+export function hydrateItemTree(stateManager: StateManager, item: Item): Item {
+  hydrateItem(stateManager, item);
+  item.children?.forEach((child) => hydrateItemTree(stateManager, child));
+  return item;
+}
+
 export function hydrateBoard(stateManager: StateManager, board: Board): Board {
   try {
     board.children.map((lane) => {
       hydrateLane(stateManager, lane);
       lane.children.map((item) => {
-        return hydrateItem(stateManager, item);
+        return hydrateItemTree(stateManager, item);
       });
     });
   } catch (e) {
@@ -197,7 +204,7 @@ export function hydratePostOp(stateManager: StateManager, board: Board, ops: Op[
     }
 
     if (entity.type === DataTypes.Item) {
-      return hydrateItem(stateManager, entity);
+      return hydrateItemTree(stateManager, entity);
     }
   });
 

@@ -15,7 +15,7 @@ import { KanbanFormat, KanbanSettings, KanbanViewSettings, SettingsModal } from 
 import { Kanban } from './components/Kanban';
 import { BasicMarkdownRenderer } from './components/MarkdownRenderer/MarkdownRenderer';
 import { c } from './components/helpers';
-import { Board } from './components/types';
+import { Board, Item } from './components/types';
 import { DndManager } from './dnd/managers/DndManager';
 import { getParentWindow } from './dnd/util/getWindow';
 import { gotoNextDailyNote, gotoPrevDailyNote, hasFrontmatterKeyRaw } from './helpers';
@@ -139,17 +139,18 @@ export class KanbanBoard extends Component implements HoverParent {
   }
 
   async prerender(board: Board) {
-    board.children.forEach((lane) => {
-      lane.children.forEach((item) => {
-        if (this.previewCache.has(item.id)) return;
+    // Personal build: nested child cards are prerendered like top-level cards.
+    const queueItem = (item: Item) => {
+      item.children?.forEach(queueItem);
+      if (this.previewCache.has(item.id)) return;
 
-        this.previewQueue.add(async () => {
-          const preview = this.addChild(new BasicMarkdownRenderer(this, item.data.title));
-          this.previewCache.set(item.id, preview);
-          await preview.renderCapability.promise;
-        });
+      this.previewQueue.add(async () => {
+        const preview = this.addChild(new BasicMarkdownRenderer(this, item.data.title));
+        this.previewCache.set(item.id, preview);
+        await preview.renderCapability.promise;
       });
-    });
+    };
+    board.children.forEach((lane) => lane.children.forEach(queueItem));
 
     if (this.previewQueue.isRunning) {
       await new Promise((res) => {
@@ -164,9 +165,11 @@ export class KanbanBoard extends Component implements HoverParent {
     const seenKeys = new Set<string>();
     board.children.forEach((lane) => {
       seenKeys.add(lane.id);
-      lane.children.forEach((item) => {
+      const seeItem = (item: Item) => {
         seenKeys.add(item.id);
-      });
+        item.children?.forEach(seeItem);
+      };
+      lane.children.forEach(seeItem);
     });
 
     for (const k of this.previewCache.keys()) {

@@ -35,6 +35,7 @@ import {
   addBlockId,
   dedentNewLines,
   executeDeletion,
+  indentLines,
   indentNewLines,
   markRangeForDeletion,
   parseLaneTitle,
@@ -48,9 +49,46 @@ interface TaskItem extends ListItem {
   checkChar?: string;
 }
 
-export function listItemToItemData(stateManager: StateManager, md: string, item: TaskItem) {
+// Personal build: nested task lists are child cards, not part of the card's text.
+function isTaskList(node: Content): node is List {
+  return (
+    node.type === 'list' &&
+    node.children.some((child) => child.checked !== null && child.checked !== undefined)
+  );
+}
+
+/**
+ * Split a list item into its own content and its child task lists. Child lists must
+ * trail the content; otherwise the item keeps everything as text (native behavior).
+ */
+function splitItemChildren(item: TaskItem): { content: TaskItem; childLists: List[] } {
+  const first = item.children.findIndex(isTaskList);
+  if (first <= 0) return { content: item, childLists: [] };
+  const trailing = item.children.slice(first);
+  if (!trailing.every(isTaskList)) return { content: item, childLists: [] };
+  return {
+    content: { ...item, children: item.children.slice(0, first) },
+    childLists: trailing as List[],
+  };
+}
+
+export function listItemToItem(stateManager: StateManager, md: string, listItem: TaskItem): Item {
+  const { childLists } = splitItemChildren(listItem);
+  return {
+    ...ItemTemplate,
+    id: generateInstanceId(),
+    data: listItemToItemData(stateManager, md, listItem),
+    children: childLists.reduce<Item[]>(
+      (items, list) => items.concat(list.children.map((child) => listItemToItem(stateManager, md, child))),
+      []
+    ),
+  };
+}
+
+export function listItemToItemData(stateManager: StateManager, md: string, listItem: TaskItem) {
   const moveTags = stateManager.getSetting('move-tags');
   const moveDates = stateManager.getSetting('move-dates');
+  const item = splitItemChildren(listItem).content;
 
   const startNode = item.children.first();
   const endNode = item.children.last();
@@ -275,13 +313,7 @@ export function astToUnhydratedBoard(
 
       if (isArchive && list) {
         archive.push(
-          ...(list as List).children.map((listItem) => {
-            return {
-              ...ItemTemplate,
-              id: generateInstanceId(),
-              data: listItemToItemData(stateManager, md, listItem),
-            };
-          })
+          ...(list as List).children.map((listItem) => listItemToItem(stateManager, md, listItem))
         );
 
         return;
@@ -300,14 +332,9 @@ export function astToUnhydratedBoard(
       } else {
         lanes.push({
           ...LaneTemplate,
-          children: (list as List).children.map((listItem) => {
-            const data = listItemToItemData(stateManager, md, listItem);
-            return {
-              ...ItemTemplate,
-              id: generateInstanceId(),
-              data,
-            };
-          }),
+          children: (list as List).children.map((listItem) =>
+            listItemToItem(stateManager, md, listItem)
+          ),
           id: generateInstanceId(),
           data: {
             ...parseLaneTitle(title),
@@ -336,11 +363,11 @@ export function updateItemContent(stateManager: StateManager, oldItem: Item, new
   const md = `- [${oldItem.data.checkChar}] ${addBlockId(indentNewLines(newContent), oldItem)}`;
 
   const ast = parseFragment(stateManager, md);
-  const itemData = listItemToItemData(stateManager, md, (ast.children[0] as List).children[0]);
+  const parsed = listItemToItem(stateManager, md, (ast.children[0] as List).children[0]);
+  // Indented tasks typed into the card become children after the existing ones.
   const newItem = update(oldItem, {
-    data: {
-      $set: itemData,
-    },
+    data: { $set: parsed.data },
+    children: { $set: [...(oldItem.children ?? []), ...parsed.children] },
   });
 
   try {
@@ -360,15 +387,9 @@ export function newItem(
 ) {
   const md = `- [${checkChar}] ${indentNewLines(newContent)}`;
   const ast = parseFragment(stateManager, md);
-  const itemData = listItemToItemData(stateManager, md, (ast.children[0] as List).children[0]);
+  const newItem = listItemToItem(stateManager, md, (ast.children[0] as List).children[0]);
 
-  itemData.forceEditMode = !!forceEdit;
-
-  const newItem: Item = {
-    ...ItemTemplate,
-    id: generateInstanceId(),
-    data: itemData,
-  };
+  newItem.data.forceEditMode = !!forceEdit;
 
   try {
     hydrateItem(stateManager, newItem);
@@ -380,15 +401,18 @@ export function newItem(
 }
 
 export function reparseBoard(stateManager: StateManager, board: Board) {
+  const reparseItem = (item: Item): Item =>
+    update(updateItemContent(stateManager, item, item.data.titleRaw), {
+      children: { $set: (item.children ?? []).map(reparseItem) },
+    });
+
   try {
     return update(board, {
       children: {
         $set: board.children.map((lane) => {
           return update(lane, {
             children: {
-              $set: lane.children.map((item) => {
-                return updateItemContent(stateManager, item, item.data.titleRaw);
-              }),
+              $set: lane.children.map(reparseItem),
             },
           });
         }),
@@ -400,8 +424,10 @@ export function reparseBoard(stateManager: StateManager, board: Board) {
   }
 }
 
-function itemToMd(item: Item) {
-  return `- [${item.data.checkChar}] ${addBlockId(indentNewLines(item.data.titleRaw), item)}`;
+function itemToMd(item: Item): string {
+  const md = `- [${item.data.checkChar}] ${addBlockId(indentNewLines(item.data.titleRaw), item)}`;
+  if (!item.children?.length) return md;
+  return [md, ...item.children.map((child) => indentLines(itemToMd(child)))].join('\n');
 }
 
 function laneToMd(lane: Lane) {
