@@ -116,8 +116,9 @@ function DraggableLaneRaw({
   const CollapsedDropArea = !isCollapsed || isStatic ? Fragment : Droppable;
   const dropAreaProps: DraggableProps = useMemo(() => {
     if (!isCollapsed || isStatic) return {} as any;
+    // The data id is the lane's, so a drop targets the lane; the droppable keeps its own id.
     const data = {
-      id: generateInstanceId(),
+      id: lane.id,
       type: 'lane',
       accepts: [DataTypes.Item],
       acceptsSort: [DataTypes.Lane],
@@ -125,11 +126,11 @@ function DraggableLaneRaw({
     return {
       elementRef: elementRef,
       measureRef: measureRef,
-      id: data.id,
+      id: generateInstanceId(),
       index: laneIndex,
       data: data,
     };
-  }, [isCollapsed, laneIndex, isStatic]);
+  }, [isCollapsed, laneIndex, isStatic, lane.id]);
 
   return (
     <SortContext.Provider value={lane.data.sorted ?? null}>

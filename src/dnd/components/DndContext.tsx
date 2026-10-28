@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'preact/compat';
 
 import { DndManager, DropHandler } from '../managers/DndManager';
-import { Entity, WithChildren } from '../types';
+import { DropTarget, Entity, WithChildren } from '../types';
 import { DndScrollState } from './ScrollStateContext';
 import { DndManagerContext } from './context';
 
@@ -16,8 +16,8 @@ export function DndContext({ win, children, onDrop }: DndContextProps) {
   onDropRef.current = onDrop;
 
   const dndManager = useMemo(() => {
-    return new DndManager(win, (dragEntity: Entity, dropEntity: Entity, nestIntent?: boolean) => {
-      return onDropRef.current(dragEntity, dropEntity, nestIntent);
+    return new DndManager(win, (dragEntity: Entity, dropEntity: Entity, target: DropTarget) => {
+      return onDropRef.current(dragEntity, dropEntity, target);
     });
   }, []);
 

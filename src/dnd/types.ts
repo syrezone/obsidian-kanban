@@ -43,8 +43,21 @@ export interface ScopedEntityData extends EntityData {
   win: Window;
 }
 
+/**
+ * Personal build: where a drop puts the dragged entity. The target list's SortManager
+ * decides it once; its preview shows it and the drop performs it.
+ */
+export interface DropTarget {
+  /** The lane or card that receives the entity; null for the board's list of lanes. */
+  parentId: string | null;
+  /** Before this sibling, at the end, or where the receiving lane puts new cards. */
+  position: { before: string } | 'end' | 'new-card';
+}
+
 export interface Entity {
   getPath(): Path;
+  /** The data id of the entity this one is nested in (a lane or card), or null. */
+  getParentId(): string | null;
   getHitbox(): Hitbox;
   getData(): ScopedEntityData;
   recalcInitial(): void;

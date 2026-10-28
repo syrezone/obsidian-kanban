@@ -25,7 +25,8 @@ const built = await build({
     contents: `
       export { parseMarkdown } from './src/parsers/parseMarkdown';
       export { astToUnhydratedBoard, boardToMd } from './src/parsers/formats/list';
-      export { nestIntoPrevious } from './src/helpers/nestCards';
+      export { moveToTarget, targetPath } from './src/helpers/dropTarget';
+      export { SortManager } from './src/dnd/managers/SortManager';
       export { moveEntity } from './src/dnd/util/data';
       export { getBoardModifiers } from './src/helpers/boardModifiers';
       export { pathOf } from './src/helpers/boardIndex';
@@ -75,7 +76,8 @@ const built = await build({
   } }],
 });
 const {
-  parseMarkdown, astToUnhydratedBoard, boardToMd, nestIntoPrevious, moveEntity, getBoardModifiers, pathOf,
+  parseMarkdown, astToUnhydratedBoard, boardToMd, moveToTarget, targetPath, SortManager, moveEntity,
+  getBoardModifiers, pathOf,
 } = await import(
   `data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`
 );
@@ -97,6 +99,8 @@ const lane = [
   '- [ ] Cat cave',
 ].join('\n');
 const md = `---\n\nkanban-plugin: board\n---\n\n## Do\n\n${lane}\n\n\n\n`;
+
+const titles = (cards) => cards.map((card) => card.data.titleRaw);
 
 function parse(markdown) {
   const { settings: boardSettings, frontmatter, ast } = parseMarkdown(stateManager, markdown);
@@ -145,16 +149,88 @@ test('nested lists mixing tasks with plain or numbered items stay card text', ()
   assert.deepEqual(ordered.children, []);
 });
 
-test('moving a card right nests it as the last child of the card above', () => {
+// A drop is decided once, as a DropTarget, by the SortManager that owns the target; its
+// preview shows that target and the drop performs it. The DOM side is stubbed here.
+function sortFixture(cards, { hidden = [] } = {}) {
+  const manager = new SortManager({ dragManager: { emitter: { on() {}, off() {} } } }, 'vertical');
+  const entity = (id, index, type = 'item') => ({
+    entityId: 'scope-' + id,
+    getPath: () => [0, index],
+    getData: () => ({ id, type }),
+    getParentId: () => 'lane',
+  });
+  const entities = cards.map((id, index) => entity(id, index));
+  entities.push(entity('placeholder', cards.length, 'placeholder'));
+  for (const e of entities) manager.sortables.set(e.entityId, [e, {}, { id: e.getData().id }]);
+  hidden.forEach((id) => manager.hidden.add('scope-' + id));
+  const byId = (id) => entities.find((e) => e.getData().id === id);
+  const drop = (dragId, targetId, nest) => manager.getDropTarget(byId(dragId) ?? entity(dragId, 9), byId(targetId), nest);
+  return { drop };
+}
+
+test('a drop goes before the card under the gap, or at the end on the list placeholder', () => {
+  const { drop } = sortFixture(['a', 'b', 'c']);
+  assert.deepEqual(drop('a', 'c', false).target, { parentId: 'lane', position: { before: 'c' } });
+  assert.deepEqual(drop('a', 'placeholder', false).target, { parentId: 'lane', position: 'end' });
+  assert.equal(drop('b', 'b', false), null);
+});
+
+test('a nesting drop goes into the nearest shown card above the gap, as its last child', () => {
+  const { drop } = sortFixture(['a', 'b', 'c', 'd'], { hidden: ['c'] });
+  // 'c' is the dragged card (hidden while dragging); the preview outlines 'b'.
+  const nested = drop('c', 'd', true);
+  assert.deepEqual(nested.target, { parentId: 'b', position: 'end' });
+  assert.deepEqual(nested.nestParent, { id: 'b' });
+  assert.deepEqual(drop('c', 'placeholder', true).target, { parentId: 'd', position: 'end' });
+  // The first card has no card above it: the drop stays a sibling drop.
+  assert.deepEqual(drop('c', 'a', true).target, { parentId: 'lane', position: { before: 'a' } });
+});
+
+test('a card drop on a collapsed lane goes where the lane puts new cards', () => {
+  const collapsed = { entityId: 'scope-area', getPath: () => [1], getParentId: () => null,
+    getData: () => ({ id: 'lane-2', type: 'lane', acceptsSort: ['lane'] }) };
+  const manager = new SortManager({ dragManager: { emitter: { on() {}, off() {} } } }, 'horizontal');
+  manager.sortables.set(collapsed.entityId, [collapsed, {}, {}]);
+  const card = { entityId: 'scope-card', getData: () => ({ id: 'card', type: 'item' }) };
+  assert.deepEqual(manager.getDropTarget(card, collapsed, true).target, { parentId: 'lane-2', position: 'new-card' });
+});
+
+const keep = (entity) => ({ next: entity });
+
+test('moving to a target lands exactly there, at any depth', () => {
   const board = parse(md);
-  const catCave = board.children[0].children[1];
-  const nested = nestIntoPrevious(board, catCave.id);
-  const parent = nested.children[0].children[0];
+  const [parent, catCave] = board.children[0].children;
+  const nested = moveToTarget(board, catCave.id, { parentId: parent.id, position: 'end' }, false, keep).board;
   assert.equal(nested.children[0].children.length, 1);
-  assert.deepEqual(parent.children.map((child) => child.data.titleRaw), ['lumee worming', '[[Fill gap]] #child-tag', 'Cat cave']);
+  assert.deepEqual(titles(nested.children[0].children[0].children), ['lumee worming', '[[Fill gap]] #child-tag', 'Cat cave']);
   assert.ok(boardToMd(nested).includes('    - [ ] Cat cave'));
-  // The first card in a list has no card above it and stays where it is.
-  assert.equal(nestIntoPrevious(board, board.children[0].children[0].id), board);
+
+  // Moving down the same list lands right before the target card, after removal.
+  const lumee = parent.children[0];
+  const down = moveToTarget(board, lumee.id, { parentId: board.children[0].id, position: { before: catCave.id } }, false, keep);
+  assert.deepEqual(titles(down.board.children[0].children), ['Send fragomen #admin', 'lumee worming', 'Cat cave']);
+  assert.deepEqual(down.from, [0, 0, 0]);
+  assert.deepEqual(down.to, [0, 1]);
+});
+
+test('a drop into the dragged card itself, or onto a vanished target, changes nothing', () => {
+  const board = parse(md);
+  const [parent] = board.children[0].children;
+  const fillGap = parent.children[1];
+  assert.equal(moveToTarget(board, parent.id, { parentId: fillGap.id, position: 'end' }, false, keep), null);
+  assert.equal(moveToTarget(board, parent.id, { parentId: parent.id, position: 'end' }, false, keep), null);
+  assert.equal(moveToTarget(board, fillGap.id, { parentId: 'gone', position: 'end' }, false, keep), null);
+  assert.equal(moveToTarget(board, fillGap.id, { parentId: parent.id, position: { before: fillGap.id } }, false, keep), null);
+});
+
+test('lanes move by id, and a new-card drop follows the insertion setting', () => {
+  const board = parse(md + '## Done\n\n- [ ] Shipped\n\n');
+  const [doLane, done] = board.children;
+  const moved = moveToTarget(board, done.id, { parentId: null, position: { before: doLane.id } }, false, keep);
+  assert.deepEqual(moved.board.children.map((lane) => lane.data.title), ['Done', 'Do']);
+  assert.deepEqual([moved.from, moved.to], [[1], [0]]);
+  assert.deepEqual(targetPath(board, { parentId: done.id, position: 'new-card' }, true), [1, 0]);
+  assert.deepEqual(targetPath(board, { parentId: done.id, position: 'new-card' }, false), [1, 1]);
 });
 
 test('a child card can be moved out to the lane and between parents', () => {
@@ -184,8 +260,6 @@ function modifierFixture() {
   };
   return { manager, modifiers: getBoardModifiers(view, manager), collapse: () => collapse };
 }
-const titles = (cards) => cards.map((card) => card.data.titleRaw);
-
 test('pathOf finds lists and cards at any depth in the current board', () => {
   const board = parse(md);
   const [parent] = board.children[0].children;

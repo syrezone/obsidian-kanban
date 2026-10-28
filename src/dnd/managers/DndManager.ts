@@ -1,11 +1,11 @@
 import EventEmitter from 'eventemitter3';
 import { debounce } from 'obsidian';
 
-import { Entity } from '../types';
+import { DropTarget, Entity } from '../types';
 import { getParentWindow } from '../util/getWindow';
 import { DragManager } from './DragManager';
 
-export type DropHandler = (dragEntity: Entity, dropEntity: Entity, nestIntent?: boolean) => void;
+export type DropHandler = (dragEntity: Entity, dropEntity: Entity, target: DropTarget) => void;
 
 export class DndManager {
   win: Window;

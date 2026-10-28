@@ -35,6 +35,9 @@ export function createHTMLDndEntity(
     getPath() {
       return [];
     },
+    getParentId() {
+      return null;
+    },
     getData() {
       return {
         viewId,

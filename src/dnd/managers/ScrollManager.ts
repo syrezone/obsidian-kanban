@@ -359,6 +359,9 @@ export class ScrollManager {
       getPath() {
         return manager.getPath(side);
       },
+      getParentId(): string | null {
+        return null;
+      },
       getData() {
         return {
           id: manager.getId(side),

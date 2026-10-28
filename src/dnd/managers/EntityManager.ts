@@ -188,6 +188,9 @@ export class EntityManager {
       getPath() {
         return manager.getPath();
       },
+      getParentId() {
+        return manager.parent?.getEntityData().id ?? null;
+      },
       getData() {
         return {
           ...manager.getEntityData(),

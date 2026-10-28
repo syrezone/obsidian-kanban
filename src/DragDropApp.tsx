@@ -3,6 +3,7 @@ import update from 'immutability-helper';
 import { JSX, createPortal, memo, useCallback, useMemo } from 'preact/compat';
 
 import { KanbanBoard } from './KanbanBoard';
+import { StateManager } from './StateManager';
 import { DraggableItem } from './components/Item/Item';
 import { DraggableLane } from './components/Lane/Lane';
 import { KanbanContext } from './components/context';
@@ -10,16 +11,11 @@ import { c, maybeCompleteForMove } from './components/helpers';
 import { Board, DataTypes, Item, Lane } from './components/types';
 import { DndContext } from './dnd/components/DndContext';
 import { DragOverlay } from './dnd/components/DragOverlay';
-import { Entity, Nestable } from './dnd/types';
-import {
-  getEntityFromPath,
-  insertEntity,
-  moveEntity,
-  removeEntity,
-  updateEntity,
-} from './dnd/util/data';
+import { DropTarget, Entity, Nestable } from './dnd/types';
+import { getEntityFromPath, insertEntity, removeEntity, updateEntity } from './dnd/util/data';
+import { pathOf } from './helpers/boardIndex';
 import { getBoardModifiers } from './helpers/boardModifiers';
-import { nestIntoPrevious } from './helpers/nestCards';
+import { moveToTarget, targetPath } from './helpers/dropTarget';
 import KanbanPlugin from './main';
 import { frontmatterKey } from './parsers/common';
 import {
@@ -27,6 +23,11 @@ import {
   getTaskStatusPreDone,
   toggleTask,
 } from './parsers/helpers/inlineMetadata';
+
+/** Whether a drop onto a collapsed lane goes first, like the board's new cards. */
+function newCardsFirst(stateManager: StateManager) {
+  return (stateManager.getSetting('new-card-insertion-method') || 'append') !== 'append';
+}
 
 export function createApp(win: Window, plugin: KanbanPlugin) {
   return <DragDropApp win={win} plugin={plugin} />;
@@ -41,7 +42,7 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
   const portals: JSX.Element[] = views.map((view) => <View key={view.id} view={view} />);
 
   const handleDrop = useCallback(
-    (dragEntity: Entity, dropEntity: Entity, nestIntent?: boolean) => {
+    (dragEntity: Entity, dropEntity: Entity, target: DropTarget) => {
       if (!dragEntity || !dropEntity) {
         return;
       }
@@ -49,40 +50,37 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
       if (dragEntity.scopeId === 'htmldnd') {
         const data = dragEntity.getData();
         const stateManager = plugin.getStateManagerFromViewID(data.viewId, data.win);
-        const dropPath = dropEntity.getPath();
-        const destinationParent = getEntityFromPath(stateManager.state, dropPath.slice(0, 1));
 
         try {
-          const items: Item[] = data.content.map((title: string) => {
-            let item = stateManager.getNewItem(title, ' ');
-            const isComplete = !!destinationParent?.data?.shouldMarkItemsComplete;
+          return stateManager.setState((board) => {
+            const to = targetPath(board, target, newCardsFirst(stateManager));
+            if (!to) return board;
+            const isComplete = !!board.children[to[0]]?.data?.shouldMarkItemsComplete;
 
-            if (isComplete) {
-              item = update(item, { data: { checkChar: { $set: getTaskStatusPreDone() } } });
-              const updates = toggleTask(item, stateManager.file);
-              if (updates) {
-                const [itemStrings, checkChars, thisIndex] = updates;
-                const nextItem = itemStrings[thisIndex];
-                const checkChar = checkChars[thisIndex];
-                return stateManager.getNewItem(nextItem, checkChar);
+            const items: Item[] = data.content.map((title: string) => {
+              let item = stateManager.getNewItem(title, ' ');
+
+              if (isComplete) {
+                item = update(item, { data: { checkChar: { $set: getTaskStatusPreDone() } } });
+                const updates = toggleTask(item, stateManager.file);
+                if (updates) {
+                  const [itemStrings, checkChars, thisIndex] = updates;
+                  const nextItem = itemStrings[thisIndex];
+                  const checkChar = checkChars[thisIndex];
+                  return stateManager.getNewItem(nextItem, checkChar);
+                }
               }
-            }
 
-            return update(item, {
-              data: {
-                checked: {
-                  $set: !!destinationParent?.data?.shouldMarkItemsComplete,
+              return update(item, {
+                data: {
+                  checked: { $set: isComplete },
+                  checkChar: { $set: isComplete ? getTaskStatusDone() : ' ' },
                 },
-                checkChar: {
-                  $set: destinationParent?.data?.shouldMarkItemsComplete
-                    ? getTaskStatusDone()
-                    : ' ',
-                },
-              },
+              });
             });
-          });
 
-          return stateManager.setState((board) => insertEntity(board, dropPath, items));
+            return insertEntity(board, to, items);
+          });
         } catch (e) {
           stateManager.setError(e);
           console.error(e);
@@ -91,76 +89,42 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
         return;
       }
 
-      const dragPath = dragEntity.getPath();
-      const dropPath = dropEntity.getPath();
       const dragEntityData = dragEntity.getData();
       const dropEntityData = dropEntity.getData();
+      const dragId: string = dragEntityData.id;
+      const isLane = dragEntityData.type === DataTypes.Lane;
       const [, sourceFile] = dragEntity.scopeId.split(':::');
       const [, destinationFile] = dropEntity.scopeId.split(':::');
 
-      const inDropArea =
-        dropEntityData.acceptsSort && !dropEntityData.acceptsSort.includes(dragEntityData.type);
-
       // Same board
       if (sourceFile === destinationFile) {
-        // Personal build: never drop a card into its own nested child cards.
-        if (
-          dropPath.length > dragPath.length &&
-          dragPath.every((step, i) => dropPath[i] === step)
-        ) {
-          return;
-        }
-
         const view = plugin.getKanbanView(dragEntity.scopeId, dragEntityData.win);
         const stateManager = plugin.stateManagers.get(view.file);
 
-        if (inDropArea) {
-          dropPath.push(0);
-        }
-
         return stateManager.setState((board) => {
-          const entity = getEntityFromPath(board, dragPath);
-          const newBoard: Board = moveEntity(
+          const moved = moveToTarget(
             board,
-            dragPath,
-            dropPath,
-            (entity) => {
-              if (entity.type === DataTypes.Item) {
-                const { next } = maybeCompleteForMove(
-                  stateManager,
-                  board,
-                  dragPath,
-                  stateManager,
-                  board,
-                  dropPath,
-                  entity
-                );
-                return next;
-              }
-              return entity;
-            },
-            (entity) => {
-              if (entity.type === DataTypes.Item) {
-                const { replacement } = maybeCompleteForMove(
-                  stateManager,
-                  board,
-                  dragPath,
-                  stateManager,
-                  board,
-                  dropPath,
-                  entity
-                );
-                return replacement;
-              }
-            }
+            dragId,
+            target,
+            newCardsFirst(stateManager),
+            (entity, from, to) =>
+              entity.type === DataTypes.Item
+                ? maybeCompleteForMove(
+                    stateManager,
+                    board,
+                    from,
+                    stateManager,
+                    board,
+                    to,
+                    entity as Item
+                  )
+                : { next: entity }
           );
+          if (!moved) return board;
 
-          if (entity.type === DataTypes.Lane) {
-            const from = dragPath.last();
-            let to = dropPath.last();
-
-            if (from < to) to -= 1;
-
+          if (isLane) {
+            const from = moved.from[0];
+            const to = moved.to[0];
             const collapsedState = view.getViewState('list-collapse');
             const op = (collapsedState: boolean[]) => {
               const newState = [...collapsedState];
@@ -170,29 +134,24 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
 
             view.setViewState('list-collapse', undefined, op);
 
-            return update<Board>(newBoard, {
+            return update<Board>(moved.board, {
               data: { settings: { 'list-collapse': { $set: op(collapsedState) } } },
             });
           }
 
-          const placed =
-            nestIntent && entity.type === DataTypes.Item
-              ? nestIntoPrevious(newBoard, entity.id)
-              : newBoard;
-
           // Remove sorting in the destination lane
-          const destinationParentPath = dropPath.slice(0, 1);
-          const destinationParent = getEntityFromPath(board, destinationParentPath);
+          const destinationLanePath = moved.to.slice(0, 1);
+          const destinationLane = getEntityFromPath(moved.board, destinationLanePath);
 
-          if (destinationParent?.data?.sorted !== undefined) {
-            return updateEntity(placed, destinationParentPath, {
+          if (destinationLane?.data?.sorted !== undefined) {
+            return updateEntity(moved.board, destinationLanePath, {
               data: {
                 $unset: ['sorted'],
               },
             });
           }
 
-          return placed;
+          return moved.board;
         });
       }
 
@@ -202,72 +161,66 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
       const destinationStateManager = plugin.stateManagers.get(destinationView.file);
 
       sourceStateManager.setState((sourceBoard) => {
-        const entity = getEntityFromPath(sourceBoard, dragPath);
+        const from = pathOf(sourceBoard, dragId);
+        if (!from) return sourceBoard;
+        const entity = getEntityFromPath(sourceBoard, from);
         let replacementEntity: Nestable;
+        let inserted = false;
 
         destinationStateManager.setState((destinationBoard) => {
-          if (inDropArea) {
-            const parent = getEntityFromPath(destinationStateManager.state, dropPath);
-            const shouldAppend =
-              (destinationStateManager.getSetting('new-card-insertion-method') || 'append') ===
-              'append';
+          const to = targetPath(destinationBoard, target, newCardsFirst(destinationStateManager));
+          if (!to) return destinationBoard;
+          inserted = true;
 
-            if (shouldAppend) dropPath.push(parent.children.length);
-            else dropPath.push(0);
-          }
-
-          const toInsert: Nestable[] = [];
-
+          let next = entity;
           if (entity.type === DataTypes.Item) {
-            const { next, replacement } = maybeCompleteForMove(
+            ({ next, replacement: replacementEntity } = maybeCompleteForMove(
               sourceStateManager,
               sourceBoard,
-              dragPath,
+              from,
               destinationStateManager,
               destinationBoard,
-              dropPath,
-              entity
-            );
-            replacementEntity = replacement;
-            toInsert.push(next);
-          } else {
-            toInsert.push(entity);
+              to,
+              entity as Item
+            ));
           }
 
-          if (entity.type === DataTypes.Lane) {
+          if (isLane) {
             const collapsedState = destinationView.getViewState('list-collapse');
-            const val = sourceView.getViewState('list-collapse')[dragPath.last()];
+            const val = sourceView.getViewState('list-collapse')[from[0]];
             const op = (collapsedState: boolean[]) => {
               const newState = [...collapsedState];
-              newState.splice(dropPath.last(), 0, val);
+              newState.splice(to[0], 0, val);
               return newState;
             };
 
             destinationView.setViewState('list-collapse', undefined, op);
 
-            return update<Board>(insertEntity(destinationBoard, dropPath, toInsert), {
+            return update<Board>(insertEntity(destinationBoard, to, [next]), {
               data: { settings: { 'list-collapse': { $set: op(collapsedState) } } },
             });
-          } else {
-            return insertEntity(destinationBoard, dropPath, toInsert);
           }
+
+          return insertEntity(destinationBoard, to, [next]);
         });
 
-        if (entity.type === DataTypes.Lane) {
+        if (!inserted) return sourceBoard;
+
+        if (isLane) {
           const collapsedState = sourceView.getViewState('list-collapse');
           const op = (collapsedState: boolean[]) => {
             const newState = [...collapsedState];
-            newState.splice(dragPath.last(), 1);
+            newState.splice(from[0], 1);
             return newState;
           };
           sourceView.setViewState('list-collapse', undefined, op);
 
-          return update<Board>(removeEntity(sourceBoard, dragPath), {
+          return update<Board>(removeEntity(sourceBoard, from), {
             data: { settings: { 'list-collapse': { $set: op(collapsedState) } } },
           });
-        } else {
-          return removeEntity(sourceBoard, dragPath, replacementEntity);
         }
+
+        return removeEntity(sourceBoard, from, replacementEntity);
       });
     },
     [views]
