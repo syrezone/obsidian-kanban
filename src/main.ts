@@ -51,10 +51,9 @@ function getEditorClass(app: any) {
 
 export default class KanbanPlugin extends Plugin {
   /** Diagnostic build marker; consumers check embedApiVersion for compatibility. */
-  readonly personalBuild = 'nested-cards-1';
+  readonly personalBuild = 'embed-api-2';
   /** Bump when the mountBoard()/KanbanMount contract changes. */
-  readonly embedApiVersion = 1;
-  embeddedCleanups = new Set<() => void>();
+  readonly embedApiVersion = 2;
 
   mountBoard(container: HTMLElement, file: TFile, options: { signal?: AbortSignal } = {}) {
     return mountKanbanBoard(this, container, file, options.signal);
@@ -92,9 +91,8 @@ export default class KanbanPlugin extends Plugin {
   }
 
   onunload() {
-    this.embeddedCleanups.forEach((cleanup) => cleanup());
-    this.embeddedCleanups.clear();
-    // Plugin unload cannot await: start each board's pending write.
+    // Embeds, as children, are already closed. Plugin unload cannot await: start each
+    // board's pending write.
     this.stateManagers.forEach((manager) => manager.document.dispose());
     this.MarkdownEditor = null;
     this.windowRegistry.forEach((reg, win) => {
