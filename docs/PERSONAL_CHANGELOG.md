@@ -9,7 +9,8 @@ open editors like Enter, and drag start commits instead of cancelling. Escape
 still cancels; normal tabs change too. Paths: `src/helpers/flushBoard.ts`
 (`registerEditorCommit`), `src/components/Editor/MarkdownEditor.tsx`,
 `src/components/Item/Item.tsx`, `test/flush-board.test.mjs`. 33 tests, type
-check, changed-file lint and build pass.
+check, changed-file lint and build pass. Deployed to both test vaults; the user
+confirms task/list-title/form switching, drag-commit and Escape on desktop and Ignis.
 
 ## 2026-10-28 - Embed and drag-geometry cleanup
 
