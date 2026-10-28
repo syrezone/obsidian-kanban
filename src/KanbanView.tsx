@@ -8,7 +8,11 @@ import KanbanPlugin from './main';
 export const kanbanViewType = 'kanban';
 export const kanbanIcon = 'lucide-trello';
 
-/** Workspace adapter; the renderer/editor session is shared with owned embeds. */
+/**
+ * Workspace adapter; the renderer/editor session is shared with owned embeds. Saving and
+ * external changes belong to the file's BoardDocument, so TextFileView's own save, reload
+ * and merge paths are routed to it.
+ */
 export class KanbanView extends TextFileView {
   board: KanbanBoard;
 
@@ -18,6 +22,7 @@ export class KanbanView extends TextFileView {
   ) {
     super(leaf);
     const view = this;
+    this.requestSave = () => this.document?.requestSave();
     this.board = this.addChild(
       new KanbanBoard(plugin, {
         app: this.app,
@@ -27,21 +32,23 @@ export class KanbanView extends TextFileView {
         get file() {
           return view.file;
         },
-        get data() {
-          return view.data;
-        },
-        set data(data: string) {
-          view.data = data;
-        },
-        save: () => view.save(),
-        requestSave: () => view.requestSave(),
         openMarkdown: (focus = true) => {
           plugin.kanbanFileModes[(leaf as any).id || view.file.path] = 'markdown';
           void plugin.setMarkdownView(leaf, focus);
         },
         addAction: (icon, title, callback) => view.addAction(icon, title, callback),
+        onSourceLost: () => {
+          // Obsidian closes tabs of deleted files; a converted note opens as Markdown.
+          if (view.app.vault.getAbstractFileByPath(view.file?.path) !== view.file) return;
+          plugin.removeView(view.board);
+          view.board.owner.openMarkdown(false);
+        },
       })
     );
+  }
+
+  get document() {
+    return this.plugin.getStateManager(this.file)?.document;
   }
 
   get emitter() {
@@ -75,9 +82,21 @@ export class KanbanView extends TextFileView {
     return this.file?.basename || 'Kanban';
   }
   getViewData() {
-    return this.data;
+    return this.document?.text ?? this.data;
   }
   clear() {}
+
+  async save() {
+    await this.document?.save();
+  }
+
+  /** Obsidian calls this when a pending edit must be written now (e.g. before quitting). */
+  saveImmediately() {
+    return this.document?.isDirty ? this.document.save() : undefined;
+  }
+
+  /** The file's BoardDocument handles external changes for all of its views. */
+  onModify() {}
 
   async loadFile(file: TFile) {
     this.plugin.removeView(this.board);
@@ -98,8 +117,10 @@ export class KanbanView extends TextFileView {
     super.onload();
     this.register(
       this.containerEl.onWindowMigrated(() => {
+        // Read the text first: removing the last view disposes the document.
+        const text = this.getViewData();
         this.plugin.removeView(this.board);
-        void this.plugin.addView(this.board, this.data, this.board.isPrimary);
+        void this.plugin.addView(this.board, text);
       })
     );
   }

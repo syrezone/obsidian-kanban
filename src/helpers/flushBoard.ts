@@ -1,13 +1,8 @@
-interface FlushView {
-  editorCommits: Set<() => void>;
-  save: () => Promise<void>;
-}
-
 interface FlushManager {
-  viewSet: Set<FlushView>;
+  viewSet: Set<{ editorCommits: Set<() => void> }>;
   hasError: () => boolean;
-  getAView: () => FlushView;
   saveToDisk: () => void;
+  document: { save: () => Promise<void> };
 }
 
 /**
@@ -20,7 +15,7 @@ export function registerEditorCommit(commits: Set<() => void>, commit: () => voi
   return () => commits.delete(commit);
 }
 
-/** Commit mounted native editors, then await the native primary writer. */
+/** Commit mounted editors in every view of the board, then await the file's document. */
 export async function flushBoard(manager: FlushManager): Promise<void> {
   if (manager.hasError()) throw new Error('Cannot flush a Kanban board with parse errors.');
 
@@ -29,7 +24,6 @@ export async function flushBoard(manager: FlushManager): Promise<void> {
   }
 
   if (manager.hasError()) throw new Error('Cannot flush a Kanban board with parse errors.');
-  // Callers flush a registered view, so the manager always has a primary writer.
   manager.saveToDisk();
-  await manager.getAView().save();
+  await manager.document.save();
 }

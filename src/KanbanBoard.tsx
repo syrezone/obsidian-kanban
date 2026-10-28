@@ -31,11 +31,10 @@ export interface KanbanBoardOwner {
   containerEl: HTMLElement;
   contentEl: HTMLElement;
   file: TFile;
-  data: string;
   scopeId: string;
-  save(): Promise<void>;
-  requestSave(): void;
   openMarkdown(focus?: boolean): void;
+  /** The source was deleted or is no longer a Kanban board; its document stopped saving. */
+  onSourceLost(error: Error): void;
   addAction(icon: string, title: string, callback: (event: MouseEvent) => void): HTMLElement;
 }
 
@@ -71,18 +70,6 @@ export class KanbanBoard extends Component implements HoverParent {
   get file() {
     return this.owner.file;
   }
-  get data() {
-    return this.owner.data;
-  }
-  set data(value: string) {
-    this.owner.data = value;
-  }
-  save() {
-    return this.owner.save();
-  }
-  requestSave() {
-    this.owner.requestSave();
-  }
   addAction(icon: string, title: string, callback: (event: MouseEvent) => void) {
     return this.owner.addAction(icon, title, callback);
   }
@@ -98,10 +85,6 @@ export class KanbanBoard extends Component implements HoverParent {
   activeEditor: any;
   editorCommits = new Set<() => void>();
   viewSettings: KanbanViewSettings = {};
-
-  get isPrimary(): boolean {
-    return this.plugin.getStateManager(this.file)?.getAView() === this;
-  }
 
   get id(): string {
     return `${this.owner.scopeId}:::${this.file?.path}`;
@@ -234,15 +217,6 @@ export class KanbanBoard extends Component implements HoverParent {
     }
   }
 
-  requestSaveToDisk(data: string) {
-    if (this.data !== data && this.isPrimary) {
-      this.data = data;
-      this.requestSave();
-    } else {
-      this.data = data;
-    }
-  }
-
   async flush(): Promise<void> {
     const file = this.file;
     const manager = this.plugin.getStateManager(file);
@@ -267,7 +241,7 @@ export class KanbanBoard extends Component implements HoverParent {
       this.actionButtons = {};
     }
 
-    return this.plugin.addView(this, data, !clear && this.isPrimary);
+    return this.plugin.addView(this, data);
   }
 
   setViewState<K extends keyof KanbanViewSettings>(

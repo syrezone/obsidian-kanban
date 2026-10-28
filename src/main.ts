@@ -14,14 +14,14 @@ import { render, unmountComponentAtNode, useEffect, useState } from 'preact/comp
 import { createApp } from './DragDropApp';
 import { KanbanBoard } from './KanbanBoard';
 import { mountKanbanBoard } from './KanbanEmbed';
-import { registerKanbanFileTags } from './fileExplorerTags';
 import { KanbanView, kanbanIcon, kanbanViewType } from './KanbanView';
 import { KanbanSettings, KanbanSettingsTab } from './Settings';
 import { StateManager } from './StateManager';
 import { DateSuggest, TimeSuggest } from './components/Editor/suggest';
 import { getParentWindow } from './dnd/util/getWindow';
-import { linkCommandIds, runFocusedEditorLinkHandler } from './helpers/detailPane';
+import { registerKanbanFileTags } from './fileExplorerTags';
 import { hasFrontmatterKey } from './helpers';
+import { linkCommandIds, runFocusedEditorLinkHandler } from './helpers/detailPane';
 import { t } from './lang/helpers';
 import { basicFrontmatter, frontmatterKey } from './parsers/common';
 
@@ -94,6 +94,8 @@ export default class KanbanPlugin extends Plugin {
   onunload() {
     this.embeddedCleanups.forEach((cleanup) => cleanup());
     this.embeddedCleanups.clear();
+    // Plugin unload cannot await: start each board's pending write.
+    this.stateManagers.forEach((manager) => manager.document.dispose());
     this.MarkdownEditor = null;
     this.windowRegistry.forEach((reg, win) => {
       reg.viewStateReceivers.forEach((fn) => fn([]));
@@ -227,7 +229,8 @@ export default class KanbanPlugin extends Plugin {
     return state;
   }
 
-  async addView(view: KanbanBoard, data: string, shouldParseData: boolean) {
+  /** Register a board view; `data` is parsed only when no other view has this file open. */
+  async addView(view: KanbanBoard, data: string) {
     const win = view.getWindow();
     const reg = this.windowRegistry.get(win);
 
@@ -246,7 +249,7 @@ export default class KanbanPlugin extends Plugin {
         if (reg.viewMap.get(view.id) === view) reg.viewMap.delete(view.id);
         throw new Error('Kanban registration cancelled.');
       }
-      await manager.registerView(view, data, shouldParseData);
+      await manager.registerView(view);
     } else {
       manager = new StateManager(
         this.app,
@@ -302,9 +305,7 @@ export default class KanbanPlugin extends Plugin {
       reg.viewMap.set(view.id, view);
     }
 
-    if (view.isPrimary) {
-      this.getStateManager(view.file).softRefresh();
-    }
+    this.getStateManager(view.file)?.softRefresh();
   }
 
   mount(win: Window) {

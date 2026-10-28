@@ -10,24 +10,25 @@ const { flushBoard, registerEditorCommit } = await import(`data:text/javascript;
 
 function fixture() {
   const events = [];
-  const primary = { editorCommits: new Set([() => events.push('commit-primary')]), async save() { events.push('saved'); } };
-  const secondary = { editorCommits: new Set([() => events.push('commit-secondary')]), async save() { throw new Error('Second writer used'); } };
-  return { events, primary, secondary, manager: {
+  const primary = { editorCommits: new Set([() => events.push('commit-primary')]) };
+  const secondary = { editorCommits: new Set([() => events.push('commit-secondary')]) };
+  const document = { async save() { events.push('saved'); } };
+  return { events, primary, secondary, document, manager: {
     viewSet: new Set([primary, secondary]), hasError: () => false,
-    getAView: () => primary, saveToDisk: () => events.push('serialize'),
+    saveToDisk: () => events.push('serialize'), document,
   } };
 }
 
-test('all shared editors commit before serialization; only the native primary saves', async () => {
+test("all shared editors commit before serialization; the file's document saves once", async () => {
   const { manager, events } = fixture();
   await flushBoard(manager);
   assert.deepEqual(events, ['commit-primary', 'commit-secondary', 'serialize', 'saved']);
 });
 
-test('flush remains pending until the native save resolves', async () => {
-  const { manager, primary, events } = fixture();
+test('flush remains pending until the document save resolves', async () => {
+  const { manager, document, events } = fixture();
   let finish;
-  primary.save = () => new Promise(resolve => { finish = resolve; });
+  document.save = () => new Promise(resolve => { finish = resolve; });
   let done = false;
   const flushing = flushBoard(manager).then(() => { done = true; });
   await Promise.resolve();
@@ -37,9 +38,9 @@ test('flush remains pending until the native save resolves', async () => {
   assert.equal(done, true);
 });
 
-test('native write failures propagate to the owner', async () => {
-  const { manager, primary } = fixture();
-  primary.save = async () => { throw new Error('Disk full'); };
+test('write failures propagate to the owner', async () => {
+  const { manager, document } = fixture();
+  document.save = async () => { throw new Error('Disk full'); };
   await assert.rejects(flushBoard(manager), /Disk full/);
 });
 

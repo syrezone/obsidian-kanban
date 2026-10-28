@@ -2,6 +2,7 @@ import update from 'immutability-helper';
 import { App, TFile, moment } from 'obsidian';
 import { useEffect, useState } from 'preact/compat';
 
+import { BoardDocument } from './BoardDocument';
 import { KanbanBoard } from './KanbanBoard';
 import { KanbanSettings, SettingRetrievers } from './Settings';
 import { getDefaultDateFormat, getDefaultTimeFormat } from './components/helpers';
@@ -25,6 +26,8 @@ export class StateManager {
   state: Board;
   ready: Promise<void>;
   file: TFile;
+  /** Personal build: the file's text and its saving, shared by every view of the board. */
+  document: BoardDocument;
 
   parser: BaseFormat;
 
@@ -40,8 +43,12 @@ export class StateManager {
     this.onEmpty = onEmpty;
     this.getGlobalSettings = getGlobalSettings;
     this.parser = new ListFormat(this);
+    this.document = new BoardDocument(app, this.file, initialData, {
+      applyText: (text, save) => this.applyText(text, save),
+      sourceLost: (error) => this.viewSet.forEach((view) => view.owner.onSourceLost(error)),
+    });
 
-    this.ready = this.registerView(initialView, initialData, true);
+    this.ready = this.registerView(initialView, initialData);
   }
 
   getAView(): KanbanBoard {
@@ -52,8 +59,8 @@ export class StateManager {
     return !!this.state?.data?.errors?.length;
   }
 
-  async registerView(view: KanbanBoard, data: string, shouldParseData: boolean) {
-    if (!shouldParseData && this.viewSet.size) view.data = this.getAView().data;
+  /** The first view parses `initialData`; later views join the parsed board. */
+  async registerView(view: KanbanBoard, initialData?: string) {
     if (!this.viewSet.has(view)) {
       this.viewSet.add(view);
     }
@@ -63,8 +70,8 @@ export class StateManager {
 
     if (!this.viewSet.has(view)) return;
 
-    if (shouldParseData) {
-      await this.newBoard(view, data);
+    if (initialData !== undefined) {
+      await this.newBoard(view, initialData);
     } else {
       await view.prerender(this.state);
     }
@@ -77,6 +84,7 @@ export class StateManager {
       this.viewSet.delete(view);
 
       if (this.viewSet.size === 0) {
+        this.document.dispose();
         this.onEmpty();
       }
     }
@@ -106,16 +114,14 @@ export class StateManager {
       return;
     }
 
-    const view = this.getAView();
+    this.document.update(this.parser.boardToMd(this.state));
+  }
 
-    if (view) {
-      const fileStr = this.parser.boardToMd(this.state);
-      view.requestSaveToDisk(fileStr);
-
-      this.viewSet.forEach((view) => {
-        view.data = fileStr;
-      });
-    }
+  /** The document replaced the file's text (external change or merge): show it. */
+  async applyText(text: string, save: boolean) {
+    const board = this.getParsedBoard(text);
+    await this.getAView()?.prerender(board);
+    this.setState(board, save);
   }
 
   softRefresh() {
@@ -360,7 +366,7 @@ export class StateManager {
 
   async reparseBoardFromMd() {
     try {
-      this.setState(this.getParsedBoard(this.getAView().data), false);
+      this.setState(this.getParsedBoard(this.document.text), false);
     } catch (e) {
       console.error(e);
       this.setError(e);

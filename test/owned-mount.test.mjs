@@ -2,8 +2,9 @@ import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-// Exercise the real mount/save/dispose implementation. DOM, Obsidian events,
-// and the Preact renderer are host boundaries; live editor tests remain required.
+// Exercise the real mount/flush/dispose implementation. DOM, Obsidian events, the Preact
+// renderer and the file's BoardDocument (tested in board-document.test.mjs) are host
+// boundaries; live editor tests remain required.
 const built = await build({
   entryPoints: [new URL('../src/KanbanEmbed.ts', import.meta.url).pathname.replace(/^\/(\w:)/, '$1')],
   bundle: true, write: false, format: 'esm', platform: 'node',
@@ -18,15 +19,12 @@ const built = await build({
         events = []; editorCommits = new Set(); rendered = Promise.resolve();
         constructor(plugin, owner) { this.plugin = plugin; this.owner = owner; }
         get file() { return this.owner.file; }
-        get isPrimary() { return this.plugin.manager.getAView() === this; }
-        get data() { return this.owner.data; } set data(value) { this.owner.data = value; }
         registerEvent(unregister) { this.events.push(unregister); }
         refreshGeometry() { this.refreshed = true; }
-        async setViewData(data) { this.data = data; }
         async flush() {
           const manager = this.plugin.manager;
           for (const view of manager.viewSet) for (const commit of view.editorCommits) commit();
-          await manager.getAView().owner.save();
+          await manager.document.save();
         }
       }
     ` }));
@@ -48,13 +46,17 @@ function fixture() {
   const file = { path: 'board.md', extension: 'md' };
   let disk = 'kanban:original';
   const writes = [], listeners = new Map(), children = new Set();
-  const manager = { ready: Promise.resolve(), viewSet: new Set(), getAView() { return this.viewSet.values().next().value; }, hasError: () => false };
+  // The file's shared document: writes its text when it differs from the last save.
+  const document = {
+    text: disk, saved: disk,
+    async save() { if (this.text !== this.saved) { writes.push(this.text); this.saved = this.text; } },
+  };
+  const manager = { ready: Promise.resolve(), viewSet: new Set(), document, hasError: () => false };
   const plugin = {
     embeddedCleanups: new Set(), manager,
     app: { vault: {
       getAbstractFileByPath: path => path === file.path ? file : null,
       read: async () => disk,
-      modify: async (_file, data) => { disk = data; writes.push(data); },
       on: (event, fn) => {
         const entries = listeners.get(event) ?? new Set(); entries.add(fn); listeners.set(event, entries);
         return () => entries.delete(fn);
@@ -67,7 +69,7 @@ function fixture() {
     removeView: view => manager.viewSet.delete(view),
     handleViewFileRename() {},
   };
-  return { plugin, file, writes, children, listeners, container: new Element(), setDisk: value => { disk = value; } };
+  return { plugin, file, writes, children, listeners, document, container: new Element(), setDisk: value => { disk = value; } };
 }
 
 test('read-only mount creates no leaf or write; disposal releases component, registrations and listeners', async () => {
@@ -85,11 +87,11 @@ test('read-only mount creates no leaf or write; disposal releases component, reg
   await assert.rejects(mount.flush(), /disposed/);
 });
 
-test('disposal commits drafts and awaits a single in-flight native-owned write before removal', async () => {
+test('disposal commits drafts and awaits the document save before removal', async () => {
   const f = fixture(); let finish;
-  f.plugin.app.vault.modify = (_file, data) => new Promise(resolve => { f.writes.push(data); finish = resolve; });
+  f.document.save = function () { f.writes.push(this.text); return new Promise(resolve => { finish = resolve; }); };
   const mount = await mountKanbanBoard(f.plugin, f.container, f.file);
-  mount.view.editorCommits.add(() => { mount.view.data = 'kanban:draft'; });
+  mount.view.editorCommits.add(() => { f.document.text = 'kanban:draft'; });
   const closing = mount.dispose();
   assert.equal(mount.dispose(), closing);
   await Promise.resolve();
@@ -99,11 +101,10 @@ test('disposal commits drafts and awaits a single in-flight native-owned write b
   assert.equal(f.children.size, 0);
 });
 
-test('write failure preserves mounted board and restores interaction', async () => {
+test('save failure preserves the mounted board and restores interaction', async () => {
   const f = fixture();
-  f.plugin.app.vault.modify = async () => { throw new Error('Disk full'); };
+  f.document.save = async () => { throw new Error('Disk full'); };
   const mount = await mountKanbanBoard(f.plugin, f.container, f.file);
-  mount.view.data = 'kanban:changed';
   await assert.rejects(mount.dispose(), /Disk full/);
   assert.equal(f.children.size, 1); assert.equal(f.plugin.manager.viewSet.size, 1);
   assert.equal(f.container.children[0].inert, false);
@@ -155,11 +156,11 @@ test('invalid Markdown is rejected without creating a component or writing', asy
   assert.equal(f.container.children.length, 0); assert.deepEqual(f.writes, []);
 });
 
-test('two embeds share state and only the primary owns the save sink', async () => {
+test('two embeds of one file share its document; each disposal flushes it', async () => {
   const f = fixture();
   const first = await mountKanbanBoard(f.plugin, f.container, f.file);
   const second = await mountKanbanBoard(f.plugin, new Element(), f.file);
-  first.view.data = second.view.data = 'kanban:shared edit';
+  f.document.text = 'kanban:shared edit';
   await second.dispose();
   assert.deepEqual(f.writes, ['kanban:shared edit']);
   assert.equal(f.plugin.manager.viewSet.size, 1);
@@ -167,49 +168,11 @@ test('two embeds share state and only the primary owns the save sink', async () 
   assert.deepEqual(f.writes, ['kanban:shared edit']);
 });
 
-test('external non-Kanban conversion prevents later saving over the note', async () => {
+test('a lost source is reported in the embed', async () => {
   const f = fixture();
-  const mount = await mountKanbanBoard(f.plugin, f.container, f.file);
-  f.setDisk('ordinary note');
-  f.listeners.get('modify').forEach(fn => fn(f.file));
-  await new Promise(resolve => setImmediate(resolve));
-  mount.view.data = 'kanban:later edit';
-  await assert.rejects(mount.dispose(), /no longer a Kanban/);
-  assert.deepEqual(f.writes, []);
-  f.plugin.embeddedCleanups.forEach(fn => fn());
-});
-
-test('the echo of our own write is not a conflict while newer edits are pending', async () => {
-  const f = fixture(); let finish;
   globalThis.notices = [];
-  f.plugin.app.vault.modify = (_file, data) => new Promise(resolve => {
-    f.setDisk(data); f.writes.push(data); finish = resolve;
-  });
   const mount = await mountKanbanBoard(f.plugin, f.container, f.file);
-  mount.view.data = 'kanban:first edit';
-  const saving = mount.flush();
-  await new Promise(resolve => setImmediate(resolve));
-  mount.view.data = 'kanban:second edit';
-  f.listeners.get('modify').forEach(fn => fn(f.file));
-  await new Promise(resolve => setImmediate(resolve));
-  finish(); await saving;
-  const disposing = mount.dispose();
-  await new Promise(resolve => setImmediate(resolve));
-  finish(); await disposing;
-  assert.deepEqual(f.writes, ['kanban:first edit', 'kanban:second edit']);
-  assert.deepEqual(globalThis.notices, []);
-});
-
-test('a secondary embed leaves external changes to the primary native tab', async () => {
-  const f = fixture(); let nativeSaves = 0;
-  f.plugin.manager.viewSet.add({ editorCommits: new Set(), owner: { save: async () => { nativeSaves++; } } });
-  const mount = await mountKanbanBoard(f.plugin, f.container, f.file);
-  mount.view.data = 'kanban:pending edit';
-  f.setDisk('kanban:written by the native tab');
-  f.listeners.get('modify').forEach(fn => fn(f.file));
-  await new Promise(resolve => setImmediate(resolve));
-  await mount.flush();
-  assert.equal(nativeSaves, 1);
-  assert.deepEqual(f.writes, []);
+  mount.view.owner.onSourceLost(new Error('Source is no longer a Kanban board.'));
+  assert.deepEqual(globalThis.notices, ['Kanban embed: Source is no longer a Kanban board.']);
   f.plugin.embeddedCleanups.forEach(fn => fn());
 });
