@@ -1,5 +1,17 @@
 # Personal Changes
 
+## 2026-10-29 - Child cards can be dragged in canvas cards
+
+User report: in a canvas card, a nested child card could not be picked up; the drag
+ended at once. The owned-embed drag watcher cancels a drag when an ancestor's transform
+changes (a canvas zoom or pan), but it watched every ancestor, including Kanban's own
+elements; sorting shifts the child's parent card with a transform, which cancelled the
+drag. Workspace tabs have no watcher, so they were not affected. It now watches only the
+embed root and its ancestors (`captureHostTransform`, `DragManager`). Not caused by the
+drop-target refactor. Tests: 72 (new: a shifted parent card keeps the drag, a host zoom
+still cancels it; it fails without the fix), type check, changed-file lint and build
+pass. Deployed to the desktop dev vault; live check pending.
+
 ## 2026-10-29 - One drop target for preview and drop (refactor 2.4)
 
 Review refactor 2.4, branch `refactor/drop-target`. The card outlined during a nesting

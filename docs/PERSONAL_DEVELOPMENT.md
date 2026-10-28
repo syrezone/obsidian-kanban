@@ -35,9 +35,11 @@ in local Git commits; no remote fork, push or release has been made.
 - Host transform checks apply only to sources inside an owned embed
   (`.kanban-owned-embed`); workspace tabs keep the upstream unscaled drag path.
   In embeds, support positive uniform scale and translation. Reject rotation/skew
-  and nonuniform/zero source scale. Ancestor transform/zoom changes (checked each
-  animation frame and at drop), document scroll changes, source detachment or
-  pointer cancellation cancel a drag without a drop. Cancellation restores sort/preview/scroll state. Host resizing during
+  and nonuniform/zero source scale. Transform/zoom changes of the embed root and its
+  ancestors (the host; checked each animation frame and at drop), document scroll changes, source detachment or
+  pointer cancellation cancel a drag without a drop. Elements inside the embed root
+  are not watched: sorting moves them with transforms during a drag, including the
+  parent card of a dragged child card. Cancellation restores sort/preview/scroll state. Host resizing during
   a gesture and cross-window dragging are not validated.
 - New pickup waits for the previous native drop animation to settle. This
   avoids caching transient sort positions or an old timer affecting a new drag.
@@ -58,7 +60,7 @@ corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
 
-All seven test files hold 71 tests; the counts per area are given in each section.
+All seven test files hold 72 tests; the counts per area are given in each section.
 
 Nineteen tests cover 0.5/1/2 scale, fractional border boxes, asymmetric margins,
 destination scale, pan/pointer anchoring, nested scroll shifts, real manager
