@@ -14,7 +14,8 @@ form, table cells (their explicit path context is gone). `splitItem` merged into
 `findItemPath` replaced by `pathOf`. Drag-and-drop drops are unchanged (2.4).
 
 Tests: 57 (five new ID-addressing tests), type check, changed-file lint and production
-build pass. Not deployed or live-checked yet.
+build pass. Deployed (`main.js`) to the desktop dev vault with the review fixes below; the
+user confirms both work on desktop. Ignis not deployed.
 
 ## 2026-10-29 - Review fixes for nested cards, links and embed saving
 
@@ -37,9 +38,8 @@ Fixes from the fork review. Build marker is now `nested-cards-1` (embed API stil
   (`subtasks.ts`, `ItemSubtasks.tsx`).
 
 Tests: 52 (six new regressions, each confirmed failing without its fix), type check,
-changed-file lint and production build pass. Not deployed or live-checked yet. Still
-open: table view does not show child cards; Archive completed ignores checked child
-cards.
+changed-file lint and production build pass. Confirmed on desktop with refactor 2.3 above. Still open: table view
+does not show child cards; Archive completed ignores checked child cards.
 
 ## 2026-10-28/29 - Detail pane, nested cards and linked-note tasks
 
