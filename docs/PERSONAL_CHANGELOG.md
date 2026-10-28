@@ -1,5 +1,16 @@
 # Personal Changes
 
+## 2026-10-28 - Commit open edits when switching or dragging
+
+User report: double-clicking a second task left the first in edit mode
+(upstream allows several open editors per board), and dragging another task
+silently discarded open edits. Opening an editor now commits the board's other
+open editors like Enter, and drag start commits instead of cancelling. Escape
+still cancels; normal tabs change too. Paths: `src/helpers/flushBoard.ts`
+(`registerEditorCommit`), `src/components/Editor/MarkdownEditor.tsx`,
+`src/components/Item/Item.tsx`, `test/flush-board.test.mjs`. 33 tests, type
+check, changed-file lint and build pass.
+
 ## 2026-10-28 - Embed and drag-geometry cleanup
 
 Review cleanup of build 4. Behavior changes: owned-embed transform checks no

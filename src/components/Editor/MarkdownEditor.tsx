@@ -6,6 +6,7 @@ import { EditorPosition, Editor as ObsidianEditor, Platform } from 'obsidian';
 import { MutableRefObject, useContext, useEffect, useRef } from 'preact/compat';
 import { KanbanBoard } from 'src/KanbanBoard';
 import { StateManager } from 'src/StateManager';
+import { registerEditorCommit } from 'src/helpers/flushBoard';
 import { t } from 'src/lang/helpers';
 
 import { KanbanContext } from '../context';
@@ -227,8 +228,7 @@ export function MarkdownEditor({
     const app = getEditorAppProxy(view);
     const editor = view.addChild(new (Editor as any)(app, elRef.current, controller));
     const cm: EditorView = editor.cm;
-    const commit = () => flushRef.current(cm);
-    view.editorCommits.add(commit);
+    const unregisterCommit = registerEditorCommit(view.editorCommits, () => flushRef.current(cm));
 
     internalRef.current = cm;
     if (editorRef) editorRef.current = cm;
@@ -256,7 +256,7 @@ export function MarkdownEditor({
 
     return () => {
       disposed = true;
-      view.editorCommits.delete(commit);
+      unregisterCommit();
       if (Platform.isMobile) {
         cm.dom.win.removeEventListener('keyboardDidShow', onShow);
       }

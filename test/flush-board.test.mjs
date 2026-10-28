@@ -6,7 +6,7 @@ const result = await build({
   entryPoints: [new URL('../src/helpers/flushBoard.ts', import.meta.url).pathname.replace(/^\/(\w:)/, '$1')],
   bundle: true, write: false, format: 'esm', platform: 'node',
 });
-const { flushBoard } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
+const { flushBoard, registerEditorCommit } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 
 function fixture() {
   const events = [];
@@ -41,6 +41,19 @@ test('native write failures propagate to the owner', async () => {
   const { manager, primary } = fixture();
   primary.save = async () => { throw new Error('Disk full'); };
   await assert.rejects(flushBoard(manager), /Disk full/);
+});
+
+test('opening an editor commits the other open editors once, then registers itself', () => {
+  const events = [];
+  const commits = new Set();
+  const first = () => { events.push('first'); commits.delete(first); };
+  commits.add(first);
+  const unregister = registerEditorCommit(commits, () => events.push('second'));
+  assert.deepEqual(events, ['first']);
+  assert.equal(commits.size, 1);
+  unregister();
+  assert.equal(commits.size, 0);
+  assert.deepEqual(events, ['first']);
 });
 
 test('invalid boards do not commit or write; commit errors do not reach the writer', async () => {

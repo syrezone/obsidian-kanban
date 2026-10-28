@@ -77,8 +77,14 @@ rather than waiting for a Preact effect; new task/list drafts submit only when
 nonempty. Editor registrations follow component lifetime; cleanup releases
 active editor ownership on desktop as well as mobile.
 
-Four save-boundary tests verify shared-editor ordering, primary-only writing,
-awaited completion and error propagation (plus 19 geometry and nine owned-mount tests; 32 total). These stub
+One editor per board (personal change from upstream): opening a task, list-title
+or form editor first runs the other open editors' commits, exactly like Enter
+(`registerEditorCommit()`). Starting any drag commits open task edits instead of
+upstream's silent cancel. Escape still cancels. This applies to workspace tabs as
+well as embeds.
+
+Five save-boundary tests verify shared-editor ordering, primary-only writing,
+awaited completion and error propagation (plus 19 geometry and nine owned-mount tests; 33 total). These stub
 the native save boundary; Obsidian/Ignis save behavior and the actual editor
 callbacks have passed user-guided timed Reset checks on desktop and Ignis: active task/column renames, new-task draft submission and no blank task from an empty form. Concurrent edits during flush, external writes,
 plugin unload and automatic teardown are not guaranteed by this operation.

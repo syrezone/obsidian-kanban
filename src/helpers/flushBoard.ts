@@ -10,6 +10,16 @@ interface FlushManager {
   saveToDisk: () => void;
 }
 
+/**
+ * One open editor per board: opening another commits the open ones exactly like
+ * Enter. Returns the unregister function for the editor's cleanup.
+ */
+export function registerEditorCommit(commits: Set<() => void>, commit: () => void) {
+  for (const other of Array.from(commits)) other();
+  commits.add(commit);
+  return () => commits.delete(commit);
+}
+
 /** Commit mounted native editors, then await the native primary writer. */
 export async function flushBoard(manager: FlushManager): Promise<void> {
   if (manager.hasError()) throw new Error('Cannot flush a Kanban board with parse errors.');

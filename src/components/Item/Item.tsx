@@ -52,8 +52,9 @@ const ItemInner = memo(function ItemInner({
   const dndManager = useContext(DndManagerContext);
 
   useEffect(() => {
+    // Keep the open edit, as Enter would; upstream discarded it on any drag.
     const handler = () => {
-      if (isEditing(editState)) setEditState(EditingState.cancel);
+      if (isEditing(editState)) setEditState(EditingState.complete);
     };
 
     dndManager.dragManager.emitter.on('dragStart', handler);
