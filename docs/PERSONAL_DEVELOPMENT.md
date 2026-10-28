@@ -4,8 +4,11 @@ Local branch `fix/personal-canvas-geometry` starts at release tag `2.0.51`
 (`8501981`). Runtime marker: `plugin.personalBuild === 'canvas-geometry-4'`
 (diagnostics only). Consumers check `plugin.embedApiVersion === 1`, bumped when
 the `mountBoard()`/`KanbanMount` contract changes.
-Manifest ID/version remain `obsidian-kanban`/`2.0.51`; settings and Markdown
-ownership stay native. This is a manually managed experimental build. Do not
+Manifest ID/version remain `obsidian-kanban`/`2.0.51`; settings stay native. Branch
+`feat/personal-subtasks` (from `ab53074`) adds the detail pane, nested cards and
+linked-note task preview (last section). Its parser reads indented task lists as child
+cards; the file stays a plain Markdown task list that upstream Kanban still opens (it
+shows children as card text). This is a manually managed experimental build. Do not
 replace it through community updates while testing. Personal changes are retained
 in local Git commits; no remote fork, push or release has been made.
 
@@ -39,8 +42,9 @@ in local Git commits; no remote fork, push or release has been made.
   avoids caching transient sort positions or an old timer affecting a new drag.
 
 Geometry owners: `DragManager`, `DragOverlay`, `SortManager`, `ScrollManager`,
-`EntityManager`, manager teardown and scoped overlay CSS. Parser, task state and
-Markdown serialization remains native. The personal mount API below is experimental.
+`EntityManager`, manager teardown and scoped overlay CSS. Task state stays native;
+nested task lists are child cards (see Nested Cards below). The personal mount API
+below is experimental.
 
 ## Build & Verification
 
@@ -52,6 +56,8 @@ node --test test/canvas-geometry.test.mjs test/flush-board.test.mjs test/owned-m
 corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
+
+All six test files hold 46 tests; the counts per area are given in each section.
 
 Nineteen tests cover 0.5/1/2 scale, fractional border boxes, asymmetric margins,
 destination scale, pan/pointer anchoring, nested scroll shifts, real manager
