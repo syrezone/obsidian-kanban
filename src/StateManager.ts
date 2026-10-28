@@ -45,7 +45,7 @@ export class StateManager {
     this.parser = new ListFormat(this);
     this.document = new BoardDocument(app, this.file, initialData, {
       applyText: (text, save) => this.applyText(text, save),
-      sourceLost: (error) => this.viewSet.forEach((view) => view.owner.onSourceLost(error)),
+      sourceLost: (error) => this.viewSet.forEach((view) => view.sourceLost(error)),
     });
 
     this.ready = this.registerView(initialView, initialData);

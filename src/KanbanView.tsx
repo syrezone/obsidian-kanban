@@ -1,7 +1,6 @@
 import { Menu, TFile, TextFileView, ViewStateResult, WorkspaceLeaf } from 'obsidian';
 
 import { KanbanBoard } from './KanbanBoard';
-import { KanbanViewSettings } from './Settings';
 import { hasFrontmatterKeyRaw } from './helpers';
 import KanbanPlugin from './main';
 
@@ -9,9 +8,10 @@ export const kanbanViewType = 'kanban';
 export const kanbanIcon = 'lucide-trello';
 
 /**
- * Workspace adapter; the renderer/editor session is shared with owned embeds. Saving and
- * external changes belong to the file's BoardDocument, so TextFileView's own save, reload
- * and merge paths are routed to it.
+ * Workspace adapter and the board's host for a tab; the renderer/editor session is shared
+ * with owned embeds. Callers use `board` directly. Saving and external changes belong to
+ * the file's BoardDocument, so TextFileView's own save, reload and merge paths are routed
+ * to it.
  */
 export class KanbanView extends TextFileView {
   board: KanbanBoard;
@@ -41,7 +41,7 @@ export class KanbanView extends TextFileView {
           // Obsidian closes tabs of deleted files; a converted note opens as Markdown.
           if (view.app.vault.getAbstractFileByPath(view.file?.path) !== view.file) return;
           plugin.removeView(view.board);
-          view.board.owner.openMarkdown(false);
+          view.board.openMarkdown(false);
         },
       })
     );
@@ -51,27 +51,6 @@ export class KanbanView extends TextFileView {
     return this.plugin.getStateManager(this.file)?.document;
   }
 
-  get emitter() {
-    return this.board.emitter;
-  }
-  get activeEditor() {
-    return this.board.activeEditor;
-  }
-  set activeEditor(value: any) {
-    this.board.activeEditor = value;
-  }
-  get viewSettings() {
-    return this.board.viewSettings;
-  }
-  set viewSettings(value: KanbanViewSettings) {
-    this.board.viewSettings = value;
-  }
-  setView(...args: Parameters<KanbanBoard['setView']>) {
-    return this.board.setView(...args);
-  }
-  getBoardSettings() {
-    return this.board.getBoardSettings();
-  }
   getViewType() {
     return kanbanViewType;
   }
@@ -126,14 +105,14 @@ export class KanbanView extends TextFileView {
     );
   }
 
-  handleRename(newPath: string, oldPath: string) {
-    this.board.handleRename(newPath, oldPath);
+  handleRename(newPath: string) {
+    if (this.file?.path === newPath) this.board.onFileRenamed();
   }
 
   setViewData(data: string, clear?: boolean) {
     if (!hasFrontmatterKeyRaw(data)) {
       this.plugin.removeView(this.board);
-      this.board.owner.openMarkdown(false);
+      this.board.openMarkdown(false);
       return;
     }
     void this.board.setViewData(data, clear).catch((error) => {
@@ -143,15 +122,15 @@ export class KanbanView extends TextFileView {
   }
 
   async setState(state: any, result: ViewStateResult): Promise<void> {
-    this.viewSettings = { ...state.kanbanViewState };
+    this.board.viewSettings = { ...state.kanbanViewState };
     await super.setState(state, result);
   }
 
   getState() {
-    return { ...super.getState(), kanbanViewState: { ...this.viewSettings } };
+    return { ...super.getState(), kanbanViewState: { ...this.board.viewSettings } };
   }
   onPaneMenu(menu: Menu, source: string) {
-    this.board.onPaneMenu(menu, source);
+    if (source === 'more-options') this.board.addMenuItems(menu);
     super.onPaneMenu(menu, source);
   }
 }

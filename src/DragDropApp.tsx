@@ -39,7 +39,11 @@ const View = memo(function View({ view }: { view: KanbanBoard }) {
 
 export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin }) {
   const views = plugin.useKanbanViews(win);
-  const portals: JSX.Element[] = views.map((view) => <View key={view.id} view={view} />);
+  // The file is part of the key so a tab that opens another file, or a renamed file,
+  // renders fresh, as before board ids became path-independent.
+  const portals: JSX.Element[] = views.map((view) => (
+    <View key={`${view.id}:${view.file?.path}`} view={view} />
+  ));
 
   const handleDrop = useCallback(
     (dragEntity: Entity, dropEntity: Entity, target: DropTarget) => {
@@ -93,12 +97,12 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
       const dropEntityData = dropEntity.getData();
       const dragId: string = dragEntityData.id;
       const isLane = dragEntityData.type === DataTypes.Lane;
-      const [, sourceFile] = dragEntity.scopeId.split(':::');
-      const [, destinationFile] = dropEntity.scopeId.split(':::');
+      const sourceView = plugin.getKanbanView(dragEntity.scopeId, dragEntityData.win);
+      const destinationView = plugin.getKanbanView(dropEntity.scopeId, dropEntityData.win);
 
       // Same board
-      if (sourceFile === destinationFile) {
-        const view = plugin.getKanbanView(dragEntity.scopeId, dragEntityData.win);
+      if (sourceView.file === destinationView.file) {
+        const view = sourceView;
         const stateManager = plugin.stateManagers.get(view.file);
 
         return stateManager.setState((board) => {
@@ -155,9 +159,7 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
         });
       }
 
-      const sourceView = plugin.getKanbanView(dragEntity.scopeId, dragEntityData.win);
       const sourceStateManager = plugin.stateManagers.get(sourceView.file);
-      const destinationView = plugin.getKanbanView(dropEntity.scopeId, dropEntityData.win);
       const destinationStateManager = plugin.stateManagers.get(destinationView.file);
 
       sourceStateManager.setState((sourceBoard) => {

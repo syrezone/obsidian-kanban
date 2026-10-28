@@ -26,11 +26,17 @@ import { t } from './lang/helpers';
 import KanbanPlugin from './main';
 import { frontmatterKey } from './parsers/common';
 
-export interface KanbanBoardOwner {
+/**
+ * What a board needs from whoever displays it (a workspace tab or an owned embed). The
+ * dependency runs one way: the board uses its host, and nothing reaches the host through
+ * the board.
+ */
+export interface BoardHost {
   app: App;
   containerEl: HTMLElement;
   contentEl: HTMLElement;
   file: TFile;
+  /** Unique and stable for the host's lifetime; the board's id. */
   scopeId: string;
   openMarkdown(focus?: boolean): void;
   /** The source was deleted or is no longer a Kanban board; its document stopped saving. */
@@ -59,19 +65,19 @@ export class KanbanBoard extends Component implements HoverParent {
     }
   }
   get app() {
-    return this.owner.app;
+    return this.host.app;
   }
   get containerEl() {
-    return this.owner.containerEl;
+    return this.host.containerEl;
   }
   get contentEl() {
-    return this.owner.contentEl;
+    return this.host.contentEl;
   }
   get file() {
-    return this.owner.file;
+    return this.host.file;
   }
   addAction(icon: string, title: string, callback: (event: MouseEvent) => void) {
-    return this.owner.addAction(icon, title, callback);
+    return this.host.addAction(icon, title, callback);
   }
 
   plugin: KanbanPlugin;
@@ -87,7 +93,7 @@ export class KanbanBoard extends Component implements HoverParent {
   viewSettings: KanbanViewSettings = {};
 
   get id(): string {
-    return `${this.owner.scopeId}:::${this.file?.path}`;
+    return this.host.scopeId;
   }
 
   get isShiftPressed(): boolean {
@@ -96,7 +102,7 @@ export class KanbanBoard extends Component implements HoverParent {
 
   constructor(
     plugin: KanbanPlugin,
-    public owner: KanbanBoardOwner
+    private host: BoardHost
   ) {
     super();
     this.plugin = plugin;
@@ -223,10 +229,18 @@ export class KanbanBoard extends Component implements HoverParent {
     this.actionButtons = {};
   }
 
-  handleRename(newPath: string, oldPath: string) {
-    if (this.file.path === newPath) {
-      this.plugin.handleViewFileRename(this, oldPath);
-    }
+  /** The board's file was renamed; its id does not depend on the path. */
+  onFileRenamed() {
+    this.plugin.getStateManager(this.file)?.softRefresh();
+  }
+
+  openMarkdown(focus?: boolean) {
+    this.host.openMarkdown(focus);
+  }
+
+  /** The source was deleted or is no longer a Kanban board; its document stopped saving. */
+  sourceLost(error: Error) {
+    this.host.onSourceLost(error);
   }
 
   async flush(): Promise<void> {
@@ -319,11 +333,8 @@ export class KanbanBoard extends Component implements HoverParent {
     ).open();
   }
 
-  onPaneMenu(menu: Menu, source: string) {
-    if (source !== 'more-options') {
-      return;
-    }
-    // Add a menu item to force the board to markdown view
+  /** Board actions for a tab's "more options" menu and the file explorer menu. */
+  addMenuItems(menu: Menu) {
     menu
       .addItem((item) => {
         item
@@ -331,7 +342,7 @@ export class KanbanBoard extends Component implements HoverParent {
           .setIcon('lucide-file-text')
           .setSection('pane')
           .onClick(() => {
-            this.owner.openMarkdown();
+            this.host.openMarkdown();
           });
       })
       .addItem((item) => {
@@ -436,7 +447,7 @@ export class KanbanBoard extends Component implements HoverParent {
         'lucide-file-text',
         t('Open as markdown'),
         () => {
-          this.owner.openMarkdown();
+          this.host.openMarkdown();
         }
       );
     } else if (

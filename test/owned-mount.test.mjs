@@ -33,8 +33,10 @@ const hosts = {
     import { Component } from 'obsidian';
     export class KanbanBoard extends Component {
       editorCommits = new Set(); rendered = Promise.resolve();
-      constructor(plugin, owner) { super(); this.plugin = plugin; this.owner = owner; }
-      get file() { return this.owner.file; }
+      constructor(plugin, host) { super(); this.plugin = plugin; this.host = host; }
+      get file() { return this.host.file; }
+      onFileRenamed() { this.renamed = true; }
+      sourceLost(error) { this.host.onSourceLost(error); }
       onunload() { this.plugin.removeView(this); }
       refreshGeometry() { this.refreshed = true; }
       async flush() {
@@ -90,7 +92,6 @@ function fixture() {
     getStateManager: () => manager.viewSet.size ? manager : undefined,
     async addView(view) { manager.viewSet.add(view); },
     removeView: view => manager.viewSet.delete(view),
-    handleViewFileRename() {},
   });
   plugin.load();
   return { plugin, file, writes, listeners, document, container: new Element(), setDisk: value => { disk = value; } };
@@ -102,6 +103,8 @@ test('read-only mount creates no leaf or write; disposal releases component, reg
   assert.equal(f.plugin._children.length, 1); assert.equal(f.plugin.manager.viewSet.size, 1);
   assert.deepEqual(f.writes, []);
   mount.refreshGeometry(); assert.equal(mount.board.refreshed, true);
+  [...f.listeners.get('rename')].forEach((fn) => fn(f.file, 'old.md'));
+  assert.equal(mount.board.renamed, true);
   let closed = false; void mount.closed.then(() => { closed = true; });
   await mount.dispose(); await mount.dispose();
   assert.equal(closed, true);
@@ -208,7 +211,7 @@ test('a lost source is reported in the embed', async () => {
   const f = fixture();
   globalThis.notices = [];
   const mount = await mountKanbanBoard(f.plugin, f.container, f.file);
-  mount.board.owner.onSourceLost(new Error('Source is no longer a Kanban board.'));
+  mount.board.sourceLost(new Error('Source is no longer a Kanban board.'));
   assert.deepEqual(globalThis.notices, ['Kanban embed: Source is no longer a Kanban board.']);
   f.plugin.unload();
 });

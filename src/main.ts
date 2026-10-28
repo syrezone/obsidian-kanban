@@ -5,6 +5,7 @@ import {
   Plugin,
   TFile,
   TFolder,
+  View,
   ViewState,
   WorkspaceLeaf,
   debounce,
@@ -21,6 +22,7 @@ import { DateSuggest, TimeSuggest } from './components/Editor/suggest';
 import { getParentWindow } from './dnd/util/getWindow';
 import { registerKanbanFileTags } from './fileExplorerTags';
 import { hasFrontmatterKey } from './helpers';
+import { BoardFocus } from './helpers/boardFocus';
 import { linkCommandIds, runFocusedEditorLinkHandler } from './helpers/detailPane';
 import { t } from './lang/helpers';
 import { basicFrontmatter, frontmatterKey } from './parsers/common';
@@ -279,6 +281,7 @@ export default class KanbanPlugin extends Plugin {
 
     const [win, reg] = entry;
     const file = view.file;
+    this.boardFocus.forget(view);
 
     if (reg.viewMap.has(view.id)) {
       reg.viewMap.delete(view.id);
@@ -290,24 +293,17 @@ export default class KanbanPlugin extends Plugin {
     }
   }
 
-  handleViewFileRename(view: KanbanBoard, oldPath: string) {
-    const win = view.getWindow();
-    if (!this.windowRegistry.has(win)) {
-      return;
-    }
+  boardFocus = new BoardFocus<KanbanBoard>(() => this.allBoards());
 
-    const reg = this.windowRegistry.get(win);
-    const oldId = `${view.owner.scopeId}:::${oldPath}`;
+  private *allBoards() {
+    for (const reg of this.windowRegistry.values()) yield* reg.viewMap.values();
+  }
 
-    if (reg.viewMap.has(oldId)) {
-      reg.viewMap.delete(oldId);
-    }
-
-    if (!reg.viewMap.has(view.id)) {
-      reg.viewMap.set(view.id, view);
-    }
-
-    this.getStateManager(view.file)?.softRefresh();
+  /** The board commands act on: a Kanban tab's board, or the focused board in the active view. */
+  getActiveBoard(): KanbanBoard | null {
+    const tab = this.app.workspace.getActiveViewOfType(KanbanView);
+    if (tab) return tab.board;
+    return this.boardFocus.within(this.app.workspace.getActiveViewOfType(View)?.containerEl);
   }
 
   mount(win: Window) {
@@ -316,6 +312,8 @@ export default class KanbanPlugin extends Plugin {
     }
 
     const el = win.document.body.createDiv();
+    this.registerDomEvent(win.document, 'pointerdown', this.boardFocus.track, { capture: true });
+    this.registerDomEvent(win.document, 'focusin', this.boardFocus.track, { capture: true });
 
     this.windowRegistry.set(win, {
       viewMap: new Map(),
@@ -421,7 +419,7 @@ export default class KanbanPlugin extends Plugin {
 
           for (const view of views) {
             if (view.file === file) {
-              view.onPaneMenu(menu, 'more-options');
+              view.addMenuItems(menu);
               haveKanbanView = true;
               break;
             }
@@ -477,7 +475,7 @@ export default class KanbanPlugin extends Plugin {
 
           if (Platform.isMobile) {
             const stateManager = this.stateManagers.get(file);
-            const kanbanView = leaf.view as KanbanView;
+            const kanbanView = (leaf.view as KanbanView).board;
             const boardView =
               kanbanView.viewSettings[frontmatterKey] || stateManager.getSetting(frontmatterKey);
 
@@ -547,11 +545,11 @@ export default class KanbanPlugin extends Plugin {
     );
 
     this.registerEvent(
-      app.vault.on('rename', (file, oldPath) => {
+      app.vault.on('rename', (file) => {
         const kanbanLeaves = app.workspace.getLeavesOfType(kanbanViewType);
 
         kanbanLeaves.forEach((leaf) => {
-          (leaf.view as KanbanView).handleRename(file.path, oldPath);
+          (leaf.view as KanbanView).handleRename(file.path);
         });
       })
     );
@@ -613,12 +611,12 @@ export default class KanbanPlugin extends Plugin {
       id: 'archive-completed-cards',
       name: t('Archive completed cards in active board'),
       checkCallback: (checking) => {
-        const activeView = app.workspace.getActiveViewOfType(KanbanView);
+        const board = this.getActiveBoard();
 
-        if (!activeView) return false;
+        if (!board) return false;
         if (checking) return true;
 
-        this.stateManagers.get(activeView.file).archiveCompletedCards();
+        this.stateManagers.get(board.file).archiveCompletedCards();
       },
     });
 
@@ -679,15 +677,12 @@ export default class KanbanPlugin extends Plugin {
       id: 'add-kanban-lane',
       name: t('Add a list'),
       checkCallback: (checking) => {
-        const view = app.workspace.getActiveViewOfType(KanbanView);
+        const board = this.getActiveBoard();
 
-        if (checking) {
-          return view && view instanceof KanbanView;
-        }
+        if (!board) return false;
+        if (checking) return true;
 
-        if (view && view instanceof KanbanView) {
-          view.emitter.emit('showLaneForm', undefined);
-        }
+        board.emitter.emit('showLaneForm', undefined);
       },
     });
 
@@ -695,15 +690,12 @@ export default class KanbanPlugin extends Plugin {
       id: 'view-board',
       name: t('View as board'),
       checkCallback: (checking) => {
-        const view = app.workspace.getActiveViewOfType(KanbanView);
+        const board = this.getActiveBoard();
 
-        if (checking) {
-          return view && view instanceof KanbanView;
-        }
+        if (!board) return false;
+        if (checking) return true;
 
-        if (view && view instanceof KanbanView) {
-          view.setView('board');
-        }
+        board.setView('board');
       },
     });
 
@@ -711,15 +703,12 @@ export default class KanbanPlugin extends Plugin {
       id: 'view-table',
       name: t('View as table'),
       checkCallback: (checking) => {
-        const view = app.workspace.getActiveViewOfType(KanbanView);
+        const board = this.getActiveBoard();
 
-        if (checking) {
-          return view && view instanceof KanbanView;
-        }
+        if (!board) return false;
+        if (checking) return true;
 
-        if (view && view instanceof KanbanView) {
-          view.setView('table');
-        }
+        board.setView('table');
       },
     });
 
@@ -727,15 +716,12 @@ export default class KanbanPlugin extends Plugin {
       id: 'view-list',
       name: t('View as list'),
       checkCallback: (checking) => {
-        const view = app.workspace.getActiveViewOfType(KanbanView);
+        const board = this.getActiveBoard();
 
-        if (checking) {
-          return view && view instanceof KanbanView;
-        }
+        if (!board) return false;
+        if (checking) return true;
 
-        if (view && view instanceof KanbanView) {
-          view.setView('list');
-        }
+        board.setView('list');
       },
     });
 
@@ -743,12 +729,12 @@ export default class KanbanPlugin extends Plugin {
       id: 'open-board-settings',
       name: t('Open board settings'),
       checkCallback: (checking) => {
-        const view = app.workspace.getActiveViewOfType(KanbanView);
+        const board = this.getActiveBoard();
 
-        if (!view) return false;
+        if (!board) return false;
         if (checking) return true;
 
-        view.getBoardSettings();
+        board.getBoardSettings();
       },
     });
   }
@@ -764,10 +750,10 @@ export default class KanbanPlugin extends Plugin {
               // Personal build: open links from a focused card editor in the detail pane.
               if (linkCommandIds.has(command?.id) && runFocusedEditorLinkHandler()) return true;
 
-              const view = app.workspace.getActiveViewOfType(KanbanView);
+              const board = self.getActiveBoard();
 
-              if (view && command?.id) {
-                view.emitter.emit('hotkey', { commandId: command.id });
+              if (board && command?.id) {
+                board.emitter.emit('hotkey', { commandId: command.id });
               }
 
               return next.call(this, command);
@@ -785,8 +771,8 @@ export default class KanbanPlugin extends Plugin {
           return function (...args) {
             next.apply(this, args);
             const view = this.getActiveViewOfType(KanbanView);
-            if (view?.activeEditor) {
-              this.activeEditor = view.activeEditor;
+            if (view?.board.activeEditor) {
+              this.activeEditor = view.board.activeEditor;
             }
           };
         },

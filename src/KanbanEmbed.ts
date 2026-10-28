@@ -1,6 +1,6 @@
 import { Component, Notice, TFile, setIcon } from 'obsidian';
 
-import { KanbanBoard, KanbanBoardOwner } from './KanbanBoard';
+import { BoardHost, KanbanBoard } from './KanbanBoard';
 import { hasFrontmatterKeyRaw } from './helpers';
 import KanbanPlugin from './main';
 
@@ -48,7 +48,7 @@ export async function mountKanbanBoard(
  * Unloading it (dispose, abort or plugin unload) unregisters the board, which disposes
  * the file's document when it was the last view, and removes the DOM.
  */
-class KanbanEmbed extends Component implements KanbanMount, KanbanBoardOwner {
+class KanbanEmbed extends Component implements KanbanMount, BoardHost {
   readonly scopeId = `embed-${crypto.randomUUID()}`;
   containerEl: HTMLElement;
   contentEl: HTMLElement;
@@ -90,8 +90,8 @@ class KanbanEmbed extends Component implements KanbanMount, KanbanBoardOwner {
     await this.board.rendered;
     this.assertOpen();
     this.registerEvent(
-      this.app.vault.on('rename', (changed, oldPath) => {
-        if (changed === this.file) this.plugin.handleViewFileRename(this.board, oldPath);
+      this.app.vault.on('rename', (changed) => {
+        if (changed === this.file) this.board.onFileRenamed();
       })
     );
   }
