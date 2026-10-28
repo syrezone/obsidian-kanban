@@ -1,5 +1,5 @@
 import { createContext } from 'preact/compat';
-import { KanbanView } from 'src/KanbanView';
+import { KanbanBoard } from 'src/KanbanBoard';
 import { StateManager } from 'src/StateManager';
 import { IntersectionObserverHandler } from 'src/dnd/managers/ScrollManager';
 
@@ -10,7 +10,7 @@ export interface KanbanContextProps {
   filePath?: string;
   stateManager: StateManager;
   boardModifiers: BoardModifiers;
-  view: KanbanView;
+  view: KanbanBoard;
 }
 
 export const KanbanContext = createContext<KanbanContextProps>(null);

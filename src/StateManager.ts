@@ -2,7 +2,7 @@ import update from 'immutability-helper';
 import { App, TFile, moment } from 'obsidian';
 import { useEffect, useState } from 'preact/compat';
 
-import { KanbanView } from './KanbanView';
+import { KanbanBoard } from './KanbanBoard';
 import { KanbanSettings, SettingRetrievers } from './Settings';
 import { getDefaultDateFormat, getDefaultTimeFormat } from './components/helpers';
 import { Board, BoardTemplate, Item } from './components/types';
@@ -18,18 +18,19 @@ export class StateManager {
   stateReceivers: Array<(state: Board) => void> = [];
   settingsNotifiers: Map<keyof KanbanSettings, Array<() => void>> = new Map();
 
-  viewSet: Set<KanbanView> = new Set();
+  viewSet: Set<KanbanBoard> = new Set();
   compiledSettings: KanbanSettings = {};
 
   app: App;
   state: Board;
+  ready: Promise<void>;
   file: TFile;
 
   parser: BaseFormat;
 
   constructor(
     app: App,
-    initialView: KanbanView,
+    initialView: KanbanBoard,
     initialData: string,
     onEmpty: () => void,
     getGlobalSettings: () => KanbanSettings
@@ -40,10 +41,10 @@ export class StateManager {
     this.getGlobalSettings = getGlobalSettings;
     this.parser = new ListFormat(this);
 
-    this.registerView(initialView, initialData, true);
+    this.ready = this.registerView(initialView, initialData, true);
   }
 
-  getAView(): KanbanView {
+  getAView(): KanbanBoard {
     return this.viewSet.values().next().value;
   }
 
@@ -51,7 +52,8 @@ export class StateManager {
     return !!this.state?.data?.errors?.length;
   }
 
-  async registerView(view: KanbanView, data: string, shouldParseData: boolean) {
+  async registerView(view: KanbanBoard, data: string, shouldParseData: boolean) {
+    if (!shouldParseData && this.viewSet.size) view.data = this.getAView().data;
     if (!this.viewSet.has(view)) {
       this.viewSet.add(view);
     }
@@ -59,16 +61,18 @@ export class StateManager {
     // This helps delay blocking the UI until the the loading indicator is displayed
     await new Promise((res) => activeWindow.setTimeout(res, 10));
 
+    if (!this.viewSet.has(view)) return;
+
     if (shouldParseData) {
       await this.newBoard(view, data);
     } else {
       await view.prerender(this.state);
     }
 
-    view.populateViewState(this.state.data.settings);
+    if (this.viewSet.has(view)) view.populateViewState(this.state.data.settings);
   }
 
-  unregisterView(view: KanbanView) {
+  unregisterView(view: KanbanBoard) {
     if (this.viewSet.has(view)) {
       this.viewSet.delete(view);
 
@@ -86,10 +90,11 @@ export class StateManager {
     };
   }
 
-  async newBoard(view: KanbanView, md: string) {
+  async newBoard(view: KanbanBoard, md: string) {
     try {
       const board = this.getParsedBoard(md);
       await view.prerender(board);
+      if (!this.viewSet.has(view)) return;
       this.setState(board, false);
     } catch (e) {
       this.setError(e);

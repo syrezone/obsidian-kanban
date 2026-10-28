@@ -1,6 +1,26 @@
 @import 'choices.js/public/assets/styles/choices.css';
 @import './components/Editor/flatpickr/flatpickr.min.css';
 
+.kanban-owned-embed {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  > .view-content {
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+  }
+}
+
+.kanban-owned-embed-actions {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
 .workspace-leaf-content[data-type='kanban'] {
   .view-content {
     padding: 0;
@@ -1700,6 +1720,13 @@ body:not(.native-scrollbars) .kanban-plugin__scroll-container::-webkit-scrollbar
   position: fixed;
   top: 0;
   left: 0;
+
+  // The overlay is positioned at the source border box. Source margins belong
+  // to sorting space, not to the portaled clone's anchor.
+  > .kanban-plugin__item-wrapper,
+  > .kanban-plugin__lane-wrapper {
+    margin: 0;
+  }
 }
 
 .kanban-plugin__loading {

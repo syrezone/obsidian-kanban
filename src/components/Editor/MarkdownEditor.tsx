@@ -4,7 +4,7 @@ import { EditorView, ViewUpdate, keymap, placeholder as placeholderExt } from '@
 import classcat from 'classcat';
 import { EditorPosition, Editor as ObsidianEditor, Platform } from 'obsidian';
 import { MutableRefObject, useContext, useEffect, useRef } from 'preact/compat';
-import { KanbanView } from 'src/KanbanView';
+import { KanbanBoard } from 'src/KanbanBoard';
 import { StateManager } from 'src/StateManager';
 import { t } from 'src/lang/helpers';
 
@@ -20,6 +20,7 @@ interface MarkdownEditorProps {
   onEnter: (cm: EditorView, mod: boolean, shift: boolean) => boolean;
   onEscape: (cm: EditorView) => void;
   onSubmit: (cm: EditorView) => void;
+  onFlush: (cm: EditorView) => void;
   onPaste?: (e: ClipboardEvent, cm: EditorView) => void;
   onChange?: (update: ViewUpdate) => void;
   value?: string;
@@ -32,7 +33,7 @@ export function allowNewLine(stateManager: StateManager, mod: boolean, shift: bo
   return stateManager.getSetting('new-line-trigger') === 'enter' ? !(mod || shift) : mod || shift;
 }
 
-function getEditorAppProxy(view: KanbanView) {
+function getEditorAppProxy(view: KanbanBoard) {
   return new Proxy(view.app, {
     get(target, prop, reveiver) {
       if (prop === 'vault') {
@@ -58,7 +59,7 @@ function getEditorAppProxy(view: KanbanView) {
 }
 
 function getMarkdownController(
-  view: KanbanView,
+  view: KanbanBoard,
   getEditor: () => ObsidianEditor
 ): Record<any, any> {
   return {
@@ -103,6 +104,7 @@ export function MarkdownEditor({
   onPaste,
   className,
   onSubmit,
+  onFlush,
   editState,
   value,
   placeholder,
@@ -110,8 +112,11 @@ export function MarkdownEditor({
   const { view, stateManager } = useContext(KanbanContext);
   const elRef = useRef<HTMLDivElement>();
   const internalRef = useRef<EditorView>();
+  const flushRef = useRef(onFlush);
+  flushRef.current = onFlush;
 
   useEffect(() => {
+    let disposed = false;
     class Editor extends view.plugin.MarkdownEditor {
       isKanbanEditor = true;
 
@@ -146,6 +151,7 @@ export function MarkdownEditor({
                 }
 
                 evt.win.setTimeout(() => {
+                  if (disposed) return;
                   this.app.workspace.activeEditor = this.owner;
                   if (Platform.isMobile) {
                     this.app.mobileToolbar.update();
@@ -219,8 +225,10 @@ export function MarkdownEditor({
 
     const controller = getMarkdownController(view, () => editor.editor);
     const app = getEditorAppProxy(view);
-    const editor = view.plugin.addChild(new (Editor as any)(app, elRef.current, controller));
+    const editor = view.addChild(new (Editor as any)(app, elRef.current, controller));
     const cm: EditorView = editor.cm;
+    const commit = () => flushRef.current(cm);
+    view.editorCommits.add(commit);
 
     internalRef.current = cm;
     if (editorRef) editorRef.current = cm;
@@ -247,20 +255,17 @@ export function MarkdownEditor({
     }
 
     return () => {
+      disposed = true;
+      view.editorCommits.delete(commit);
       if (Platform.isMobile) {
         cm.dom.win.removeEventListener('keyboardDidShow', onShow);
-
-        if (view.activeEditor === controller) {
-          view.activeEditor = null;
-        }
-
-        if (app.workspace.activeEditor === controller) {
-          app.workspace.activeEditor = null;
-          (app as any).mobileToolbar.update();
-          view.contentEl.removeClass('is-mobile-editing');
-        }
       }
-      view.plugin.removeChild(editor);
+      if (view.activeEditor === controller) view.activeEditor = null;
+      if (app.workspace.activeEditor === controller) {
+        app.workspace.activeEditor = null;
+        if (Platform.isMobile) (app as any).mobileToolbar.update();
+      }
+      view.removeChild(editor);
       internalRef.current = null;
       if (editorRef) editorRef.current = null;
     };

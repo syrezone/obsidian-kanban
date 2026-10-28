@@ -3,7 +3,8 @@ import { CSSProperties, createPortal, useContext, useEffect, useState } from 'pr
 
 import { DragEventData } from '../managers/DragManager';
 import { Coordinates, Entity, Hitbox } from '../types';
-import { getDropDuration, transforms, transitions } from '../util/animation';
+import { getDropDuration, transitions } from '../util/animation';
+import { previewGeometry } from '../util/geometry';
 import { emptyHitbox } from '../util/hitbox';
 import { DndManagerContext } from './context';
 
@@ -15,25 +16,15 @@ function getDragOverlayStyles(
   position: Coordinates,
   origin: Coordinates,
   originHitbox: Hitbox,
-  margin: Hitbox,
+  scale: number,
   transition?: string,
-  transform?: string
+  destination?: Coordinates
 ): CSSProperties {
-  const adjustedHitbox = [
-    originHitbox[0] - margin[0],
-    originHitbox[1] - margin[1],
-    originHitbox[2] + margin[2],
-    originHitbox[3] + margin[3],
-  ];
-
   return {
-    transform:
-      transform ||
-      `translate3d(${position.x - origin.x + adjustedHitbox[0]}px, ${
-        position.y - origin.y + adjustedHitbox[1]
-      }px, 0px)`,
-    width: `${adjustedHitbox[2] - adjustedHitbox[0]}px`,
-    height: `${adjustedHitbox[3] - adjustedHitbox[1]}px`,
+    ...previewGeometry(originHitbox, origin, position, scale),
+    ...(destination
+      ? { transform: `translate3d(${destination.x}px, ${destination.y}px, 0) scale(${scale})` }
+      : {}),
     transition,
   };
 }
@@ -48,34 +39,43 @@ export function DragOverlay({ children }: DragOverlayProps) {
     if (!dndManager) return;
 
     let dragOriginHitbox: Hitbox = emptyHitbox;
+    let scale = 1;
+    let font: DragEventData['dragFont'];
+    let dropTimer = 0;
 
     const dragStart = ({
       dragEntity,
       dragOrigin,
       dragPosition,
-      dragEntityMargin,
+      dragOriginHitbox: originHitbox,
+      dragScale,
+      dragFont,
     }: DragEventData) => {
       if (!dragEntity || !dragPosition || !dragOrigin) {
         return;
       }
-      dragOriginHitbox = dragEntity.getHitbox();
+      dndManager.win.clearTimeout(dropTimer);
+      dragOriginHitbox = originHitbox;
+      scale = dragScale || 1;
+      font = dragFont;
       setDragEntity(dragEntity);
-      setStyles(getDragOverlayStyles(dragPosition, dragOrigin, dragOriginHitbox, dragEntityMargin));
+      setStyles({
+        ...getDragOverlayStyles(dragPosition, dragOrigin, dragOriginHitbox, scale),
+        ...font,
+      });
     };
 
-    const dragMove = ({ dragOrigin, dragPosition, dragEntityMargin }: DragEventData) => {
+    const dragMove = ({ dragOrigin, dragPosition }: DragEventData) => {
       if (!dragPosition || !dragOrigin) {
         return;
       }
-      setStyles(getDragOverlayStyles(dragPosition, dragOrigin, dragOriginHitbox, dragEntityMargin));
+      setStyles({
+        ...getDragOverlayStyles(dragPosition, dragOrigin, dragOriginHitbox, scale),
+        ...font,
+      });
     };
 
-    const dragEnd = ({
-      dragOrigin,
-      primaryIntersection,
-      dragPosition,
-      dragEntityMargin,
-    }: DragEventData) => {
+    const dragEnd = ({ dragOrigin, primaryIntersection, dragPosition }: DragEventData) => {
       if (primaryIntersection && dragPosition && dragOrigin) {
         const dropHitbox = primaryIntersection.getHitbox();
         const dropDestination = {
@@ -88,20 +88,20 @@ export function DragOverlay({ children }: DragOverlayProps) {
         });
 
         const transition = transitions.drop(dropDuration);
-        const transform = transforms.drop(dropDestination);
 
-        setStyles(
-          getDragOverlayStyles(
+        setStyles({
+          ...getDragOverlayStyles(
             dragPosition,
             dragOrigin,
             dragOriginHitbox,
-            dragEntityMargin,
+            scale,
             transition,
-            transform
-          )
-        );
+            dropDestination
+          ),
+          ...font,
+        });
 
-        activeWindow.setTimeout(() => {
+        dropTimer = dndManager.win.setTimeout(() => {
           setDragEntity(undefined);
           setStyles(undefined);
         }, dropDuration);
@@ -110,16 +110,24 @@ export function DragOverlay({ children }: DragOverlayProps) {
         setStyles(undefined);
       }
     };
+    const dragCancel = () => {
+      dndManager.win.clearTimeout(dropTimer);
+      setDragEntity(undefined);
+      setStyles(undefined);
+    };
 
     const { emitter } = dndManager.dragManager;
     emitter.on('dragStart', dragStart);
     emitter.on('dragMove', dragMove);
     emitter.on('dragEnd', dragEnd);
+    emitter.on('dragCancel', dragCancel);
 
     return () => {
       emitter.off('dragStart', dragStart);
       emitter.off('dragMove', dragMove);
       emitter.off('dragEnd', dragEnd);
+      emitter.off('dragCancel', dragCancel);
+      dndManager.win.clearTimeout(dropTimer);
     };
   }, [dndManager]);
 
@@ -135,7 +143,12 @@ export function useIsAnythingDragging() {
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
+    let dropTimer = 0;
     const onDragStart = () => setIsDragging(true);
+    const onDragCancel = () => {
+      activeWindow.clearTimeout(dropTimer);
+      setIsDragging(false);
+    };
     const onDragEnd = ({ primaryIntersection, dragPosition }: DragEventData) => {
       const dropHitbox = primaryIntersection?.getHitbox() || [0, 0];
       const dropDestination = {
@@ -147,17 +160,20 @@ export function useIsAnythingDragging() {
         destination: dropDestination,
       });
 
-      activeWindow.setTimeout(() => setIsDragging(false), dropDuration);
+      dropTimer = activeWindow.setTimeout(() => setIsDragging(false), dropDuration);
     };
 
     const { emitter } = dndManager.dragManager;
 
     emitter.on('dragStart', onDragStart);
     emitter.on('dragEnd', onDragEnd);
+    emitter.on('dragCancel', onDragCancel);
 
     return () => {
       emitter.off('dragStart', onDragStart);
       emitter.off('dragEnd', onDragEnd);
+      emitter.off('dragCancel', onDragCancel);
+      activeWindow.clearTimeout(dropTimer);
     };
   }, [dndManager]);
 

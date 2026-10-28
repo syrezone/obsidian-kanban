@@ -1,6 +1,6 @@
 import update from 'immutability-helper';
 import { moment } from 'obsidian';
-import { KanbanView } from 'src/KanbanView';
+import { KanbanBoard } from 'src/KanbanBoard';
 import { StateManager } from 'src/StateManager';
 import { Path } from 'src/dnd/types';
 import {
@@ -36,7 +36,7 @@ export interface BoardModifiers {
   duplicateEntity: (path: Path) => void;
 }
 
-export function getBoardModifiers(view: KanbanView, stateManager: StateManager): BoardModifiers {
+export function getBoardModifiers(view: KanbanBoard, stateManager: StateManager): BoardModifiers {
   const appendArchiveDate = (item: Item) => {
     const archiveDateFormat = stateManager.getSetting('archive-date-format');
     const archiveDateSeparator = stateManager.getSetting('archive-date-separator');

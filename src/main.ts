@@ -12,6 +12,8 @@ import {
 import { render, unmountComponentAtNode, useEffect, useState } from 'preact/compat';
 
 import { createApp } from './DragDropApp';
+import { KanbanBoard } from './KanbanBoard';
+import { mountKanbanBoard } from './KanbanEmbed';
 import { KanbanView, kanbanIcon, kanbanViewType } from './KanbanView';
 import { KanbanSettings, KanbanSettingsTab } from './Settings';
 import { StateManager } from './StateManager';
@@ -22,8 +24,8 @@ import { t } from './lang/helpers';
 import { basicFrontmatter, frontmatterKey } from './parsers/common';
 
 interface WindowRegistry {
-  viewMap: Map<string, KanbanView>;
-  viewStateReceivers: Array<(views: KanbanView[]) => void>;
+  viewMap: Map<string, KanbanBoard>;
+  viewStateReceivers: Array<(views: KanbanBoard[]) => void>;
   appRoot: HTMLElement;
 }
 
@@ -46,6 +48,12 @@ function getEditorClass(app: any) {
 }
 
 export default class KanbanPlugin extends Plugin {
+  readonly personalBuild = 'canvas-geometry-4';
+  embeddedCleanups = new Set<() => void>();
+
+  mountBoard(container: HTMLElement, file: TFile, options: { signal?: AbortSignal } = {}) {
+    return mountKanbanBoard(this, container, file, options.signal);
+  }
   settingsTab: KanbanSettingsTab;
   settings: KanbanSettings = {};
 
@@ -78,6 +86,8 @@ export default class KanbanPlugin extends Plugin {
   }
 
   onunload() {
+    this.embeddedCleanups.forEach((cleanup) => cleanup());
+    this.embeddedCleanups.clear();
     this.MarkdownEditor = null;
     this.windowRegistry.forEach((reg, win) => {
       reg.viewStateReceivers.forEach((fn) => fn([]));
@@ -193,13 +203,14 @@ export default class KanbanPlugin extends Plugin {
     return this.stateManagers.get(view.file);
   }
 
-  useKanbanViews(win: Window): KanbanView[] {
+  useKanbanViews(win: Window): KanbanBoard[] {
     const [state, setState] = useState(this.getKanbanViews(win));
 
     useEffect(() => {
       const reg = this.windowRegistry.get(win);
 
       reg?.viewStateReceivers.push(setState);
+      setState(this.getKanbanViews(win));
 
       return () => {
         reg?.viewStateReceivers.remove(setState);
@@ -209,7 +220,7 @@ export default class KanbanPlugin extends Plugin {
     return state;
   }
 
-  addView(view: KanbanView, data: string, shouldParseData: boolean) {
+  async addView(view: KanbanBoard, data: string, shouldParseData: boolean) {
     const win = view.getWindow();
     const reg = this.windowRegistry.get(win);
 
@@ -221,7 +232,14 @@ export default class KanbanPlugin extends Plugin {
     const file = view.file;
 
     if (this.stateManagers.has(file)) {
-      this.stateManagers.get(file).registerView(view, data, shouldParseData);
+      const manager = this.stateManagers.get(file);
+      await manager.ready;
+      if (this.stateManagers.get(file) !== manager) {
+        reg.viewMap.delete(view.id);
+        throw new Error('Kanban file session closed during registration.');
+      }
+      if (reg.viewMap.get(view.id) !== view) throw new Error('Kanban registration cancelled.');
+      await manager.registerView(view, data, shouldParseData);
     } else {
       this.stateManagers.set(
         file,
@@ -235,10 +253,16 @@ export default class KanbanPlugin extends Plugin {
       );
     }
 
+    const manager = this.stateManagers.get(file);
+    if (!manager) throw new Error('Kanban registration cancelled.');
+    await manager.ready;
+    if (reg.viewMap.get(view.id) !== view || !manager.viewSet.has(view)) {
+      throw new Error('Kanban registration cancelled.');
+    }
     reg.viewStateReceivers.forEach((fn) => fn(this.getKanbanViews(win)));
   }
 
-  removeView(view: KanbanView) {
+  removeView(view: KanbanBoard) {
     const entry = Array.from(this.windowRegistry.entries()).find(([, reg]) => {
       return reg.viewMap.has(view.id);
     }, []);
@@ -258,14 +282,14 @@ export default class KanbanPlugin extends Plugin {
     }
   }
 
-  handleViewFileRename(view: KanbanView, oldPath: string) {
+  handleViewFileRename(view: KanbanBoard, oldPath: string) {
     const win = view.getWindow();
     if (!this.windowRegistry.has(win)) {
       return;
     }
 
     const reg = this.windowRegistry.get(win);
-    const oldId = `${(view.leaf as any).id}:::${oldPath}`;
+    const oldId = `${view.owner.scopeId}:::${oldPath}`;
 
     if (reg.viewMap.has(oldId)) {
       reg.viewMap.delete(oldId);
@@ -391,7 +415,7 @@ export default class KanbanPlugin extends Plugin {
 
           for (const view of views) {
             if (view.file === file) {
-              view.onPaneMenu(menu, 'more-options', false);
+              view.onPaneMenu(menu, 'more-options');
               haveKanbanView = true;
               break;
             }

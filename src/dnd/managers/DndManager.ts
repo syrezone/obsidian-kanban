@@ -28,6 +28,7 @@ export class DndManager {
   }
 
   destroy() {
+    this.dragManager.cancelDrag();
     this.resizeObserver.disconnect();
   }
 

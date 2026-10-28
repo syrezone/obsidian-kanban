@@ -2,7 +2,7 @@ import { generateInstanceId } from 'src/components/helpers';
 
 import { Axis, Entity } from '../types';
 import { getDropDuration, removeStyle, setStyle, transitions } from '../util/animation';
-import { getHitboxDimensions } from '../util/hitbox';
+import { elementScale, sortDimensions } from '../util/geometry';
 import { SiblingDirection, getSiblingDirection } from '../util/path';
 import { DndManager } from './DndManager';
 import { DragEventData } from './DragManager';
@@ -49,6 +49,7 @@ export class SortManager {
     dndManager.dragManager.emitter.on('dragEnd', this.handleDragEnd);
     dndManager.dragManager.emitter.on('dragEnter', this.handleDragEnter);
     dndManager.dragManager.emitter.on('dragLeave', this.handleDragLeave);
+    dndManager.dragManager.emitter.on('dragCancel', this.handleDragCancel);
   }
 
   destroy() {
@@ -59,6 +60,31 @@ export class SortManager {
     this.dndManager.dragManager.emitter.off('dragEnd', this.handleDragEnd);
     this.dndManager.dragManager.emitter.off('dragEnter', this.handleDragEnter);
     this.dndManager.dragManager.emitter.off('dragLeave', this.handleDragLeave);
+    this.dndManager.dragManager.emitter.off('dragCancel', this.handleDragCancel);
+  }
+
+  handleDragCancel = () => {
+    const { win } = this.dndManager;
+    win.clearTimeout(this.dragEnterTimeout);
+    win.clearTimeout(this.dragLeaveTimeout);
+    win.clearTimeout(this.dragEndTimeout);
+    this.sortables.forEach(([, , measure]) => measure.removeClass('is-dropping'));
+    this.resetSelf({
+      maintainHidden: false,
+      shiftTransition: transitions.none,
+      placeholderTransition: transitions.none,
+    });
+    this.hitboxDimensions = emptyDimensions;
+  };
+
+  private localDimensions(
+    box: DragEventData['dragOriginHitbox'],
+    margin: DragEventData['dragEntityMargin'],
+    scale: number = 1
+  ) {
+    const target = this.placeholder?.[2];
+    if (!target) throw new Error('Sortable has no destination placeholder.');
+    return sortDimensions(box, margin || [0, 0, 0, 0], scale, elementScale(target));
   }
 
   registerSortable(id: string, entity: Entity, el: HTMLElement, measureEl: HTMLElement) {
@@ -81,7 +107,12 @@ export class SortManager {
 
   hitboxDimensions = emptyDimensions;
 
-  handleDragStart = ({ dragEntity, dragEntityMargin, dragOriginHitbox }: DragEventData) => {
+  handleDragStart = ({
+    dragEntity,
+    dragEntityMargin,
+    dragOriginHitbox,
+    dragScale,
+  }: DragEventData) => {
     const id = dragEntity?.entityId;
     const haveDragEntity = id ? this.sortables.has(id) : null;
 
@@ -90,7 +121,7 @@ export class SortManager {
     }
 
     this.setSortState(true);
-    this.hitboxDimensions = getHitboxDimensions(dragOriginHitbox, dragEntityMargin);
+    this.hitboxDimensions = this.localDimensions(dragOriginHitbox, dragEntityMargin, dragScale);
     this.activatePlaceholder(this.hitboxDimensions, transitions.none);
 
     this.sortables.forEach(([entity, el, measureEl]) => {
@@ -244,6 +275,7 @@ export class SortManager {
     dragEntityMargin,
     dragOriginHitbox,
     primaryIntersection,
+    dragScale,
   }: DragEventData) => {
     const id = primaryIntersection?.entityId;
     const haveSortable = id ? this.sortables.has(id) : null;
@@ -266,9 +298,10 @@ export class SortManager {
     win.clearTimeout(this.dragEnterTimeout);
 
     this.dragEnterTimeout = win.setTimeout(() => {
-      const dims = (this.hitboxDimensions = getHitboxDimensions(
+      const dims = (this.hitboxDimensions = this.localDimensions(
         dragOriginHitbox,
-        dragEntityMargin
+        dragEntityMargin,
+        dragScale
       ));
       this.setSortState(true);
       this.activatePlaceholder(dims, transitions.placeholder);

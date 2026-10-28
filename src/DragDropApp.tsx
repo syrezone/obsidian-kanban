@@ -2,7 +2,7 @@ import classcat from 'classcat';
 import update from 'immutability-helper';
 import { JSX, createPortal, memo, useCallback, useMemo } from 'preact/compat';
 
-import { KanbanView } from './KanbanView';
+import { KanbanBoard } from './KanbanBoard';
 import { DraggableItem } from './components/Item/Item';
 import { DraggableLane } from './components/Lane/Lane';
 import { KanbanContext } from './components/context';
@@ -31,7 +31,7 @@ export function createApp(win: Window, plugin: KanbanPlugin) {
   return <DragDropApp win={win} plugin={plugin} />;
 }
 
-const View = memo(function View({ view }: { view: KanbanView }) {
+const View = memo(function View({ view }: { view: KanbanBoard }) {
   return createPortal(view.getPortal(), view.contentEl);
 });
 

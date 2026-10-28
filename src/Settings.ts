@@ -8,7 +8,7 @@ import {
   ToggleComponent,
 } from 'obsidian';
 
-import { KanbanView } from './KanbanView';
+import { KanbanBoard } from './KanbanBoard';
 import {
   c,
   generateInstanceId,
@@ -1540,10 +1540,10 @@ export class SettingsManager {
 }
 
 export class SettingsModal extends Modal {
-  view: KanbanView;
+  view: KanbanBoard;
   settingsManager: SettingsManager;
 
-  constructor(view: KanbanView, config: SettingsManagerConfig, settings: KanbanSettings) {
+  constructor(view: KanbanBoard, config: SettingsManagerConfig, settings: KanbanSettings) {
     super(view.app);
 
     this.view = view;

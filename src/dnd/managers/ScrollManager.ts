@@ -9,6 +9,7 @@ import {
   initialScrollShift,
   initialScrollState,
 } from '../types';
+import { elementScale, screenShift } from '../util/geometry';
 import { getParentWindow } from '../util/getWindow';
 import {
   adjustHitbox,
@@ -34,6 +35,7 @@ export class ScrollManager {
   triggerTypes: string[];
   scrollState: ScrollState;
   scrollEl: HTMLElement;
+  private screenScale = 1;
   parent: ScrollManager | null;
 
   observer: IntersectionObserver;
@@ -187,6 +189,7 @@ export class ScrollManager {
       this.dndManager.dragManager.emitter.on('updateDragScroll', this.handleUpdateDragScroll, id);
       this.dndManager.dragManager.emitter.on('endDragScroll', this.handleEndDragScroll, id);
       this.dndManager.dragManager.emitter.on('dragEnd', this.onDragEnd);
+      this.dndManager.dragManager.emitter.on('dragCancel', this.onDragEnd);
     });
   }
 
@@ -197,6 +200,7 @@ export class ScrollManager {
       this.dndManager.dragManager.emitter.off('updateDragScroll', this.handleUpdateDragScroll, id);
       this.dndManager.dragManager.emitter.off('endDragScroll', this.handleEndDragScroll, id);
       this.dndManager.dragManager.emitter.off('dragEnd', this.onDragEnd);
+      this.dndManager.dragManager.emitter.off('dragCancel', this.onDragEnd);
     });
   }
 
@@ -290,12 +294,22 @@ export class ScrollManager {
     return [...(this.parent?.getPath() || []), 0];
   }
 
+  getScreenScrollState(): ScrollState {
+    // Child refs can initialize before the parent's initNodes(). There is no
+    // scroll element/offset to scale yet, matching the native initial state.
+    if (!this.scrollEl) return initialScrollState;
+    // A dragged lane is hidden during sorting; retain its captured scale then.
+    if (this.scrollEl.getBoundingClientRect().width > 0)
+      this.screenScale = elementScale(this.scrollEl);
+    return { ...this.scrollState, ...screenShift(this.scrollState, this.screenScale) };
+  }
+
   getScrollShift(): CoordinateShift {
     const parentShift = this.parent?.getScrollShift();
 
     return {
-      x: numberOrZero(this.parent?.scrollState.x) + numberOrZero(parentShift?.x),
-      y: numberOrZero(this.parent?.scrollState.y) + numberOrZero(parentShift?.y),
+      x: numberOrZero(this.parent?.getScreenScrollState().x) + numberOrZero(parentShift?.x),
+      y: numberOrZero(this.parent?.getScreenScrollState().y) + numberOrZero(parentShift?.y),
     };
   }
 
@@ -307,12 +321,12 @@ export class ScrollManager {
       entityId: manager.getId(side),
       initial: calculateScrollHitbox(
         this.scrollEl.getBoundingClientRect(),
-        this.parent?.scrollState || initialScrollState,
+        this.parent?.getScreenScrollState() || initialScrollState,
         this.parent?.getScrollShift() || initialScrollShift,
         side
       ),
       getParentScrollState() {
-        return manager.parent?.scrollState || initialScrollState;
+        return manager.parent?.getScreenScrollState() || initialScrollState;
       },
       getParentScrollShift() {
         return manager.parent?.getScrollShift() || initialScrollShift;
@@ -320,7 +334,7 @@ export class ScrollManager {
       recalcInitial() {
         this.initial = calculateScrollHitbox(
           manager.scrollEl.getBoundingClientRect(),
-          manager.parent?.scrollState || initialScrollState,
+          manager.parent?.getScreenScrollState() || initialScrollState,
           manager.parent?.getScrollShift() || initialScrollShift,
           side
         );

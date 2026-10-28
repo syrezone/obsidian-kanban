@@ -144,12 +144,12 @@ export class EntityManager {
       entityId: this.entityId,
       initial: calculateHitbox(
         rect,
-        manager.scrollParent?.scrollState || initialScrollState,
+        manager.scrollParent?.getScreenScrollState() || initialScrollState,
         manager.scrollParent?.getScrollShift() || initialScrollShift,
         null
       ),
       getParentScrollState() {
-        return manager.scrollParent?.scrollState || initialScrollState;
+        return manager.scrollParent?.getScreenScrollState() || initialScrollState;
       },
       getParentScrollShift() {
         return manager.scrollParent?.getScrollShift() || initialScrollShift;
@@ -157,7 +157,7 @@ export class EntityManager {
       recalcInitial() {
         this.initial = calculateHitbox(
           manager.measureNode.getBoundingClientRect(),
-          manager.scrollParent?.scrollState || initialScrollState,
+          manager.scrollParent?.getScreenScrollState() || initialScrollState,
           manager.scrollParent?.getScrollShift() || initialScrollShift,
           null
         );

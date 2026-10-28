@@ -263,6 +263,14 @@ export const ItemContent = memo(function ItemContent({
           onEnter={onEnter}
           onEscape={onEscape}
           onSubmit={onSubmit}
+          onFlush={(cm) => {
+            const title = cm.state.doc.toString().trim();
+            if (title !== item.data.titleRaw) {
+              boardModifiers.updateItem(path, stateManager.updateItemContent(item, title));
+            }
+            titleRef.current = null;
+            setEditState(EditingState.complete);
+          }}
           value={item.data.titleRaw}
           onChange={(update) => {
             if (update.docChanged) {

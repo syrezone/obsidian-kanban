@@ -1,13 +1,15 @@
 import boxIntersect from 'box-intersect';
 import EventEmitter from 'eventemitter3';
+import { Notice } from 'obsidian';
 import { RefObject, useCallback, useContext, useRef } from 'preact/compat';
 import { StateManager } from 'src/StateManager';
 import { handleDragOrPaste } from 'src/components/Item/helpers';
 
 import { DndManagerContext } from '../components/context';
 import { Coordinates, Entity, Hitbox, Side } from '../types';
-import { rafThrottle } from '../util/animation';
+import { getDropDuration, rafThrottle } from '../util/animation';
 import { createHTMLDndEntity } from '../util/createHTMLDndEntity';
+import { captureHostTransform, elementScale } from '../util/geometry';
 import {
   adjustHitboxForMovement,
   distanceBetween,
@@ -19,6 +21,8 @@ export interface DragEventData {
   dragEntity?: Entity;
   dragEntityId?: string;
   dragEntityMargin?: Hitbox;
+  dragScale?: number;
+  dragFont?: { fontSize: string; lineHeight: string };
   dragOrigin?: Coordinates;
   dragOriginHitbox?: Hitbox;
   dragPosition?: Coordinates;
@@ -42,6 +46,11 @@ export class DragManager {
   dragEntity?: Entity;
   dragEntityId?: string;
   dragEntityMargin?: Hitbox;
+  dragScale: number = 1;
+  dragFont?: { fontSize: string; lineHeight: string };
+  private hostUnchanged?: () => boolean;
+  private transformFrame = 0;
+  private dropUntil = 0;
   dragOrigin?: Coordinates;
   dragOriginHitbox?: Hitbox;
   dragPosition?: Coordinates;
@@ -69,6 +78,8 @@ export class DragManager {
       dragEntity: this.dragEntity,
       dragEntityId: this.dragEntityId,
       dragEntityMargin: this.dragEntityMargin,
+      dragScale: this.dragScale,
+      dragFont: this.dragFont,
       dragOrigin: this.dragOrigin,
       dragOriginHitbox: this.dragOriginHitbox,
       dragPosition: this.dragPosition,
@@ -81,15 +92,33 @@ export class DragManager {
     const id =
       referenceElement?.dataset.hitboxid || (e.currentTarget as HTMLElement).dataset.hitboxid;
 
-    if (!id) return;
+    if (!id || this.dragEntity || this.win.performance.now() < this.dropUntil) return false;
 
-    const styles = getComputedStyle(referenceElement || (e.currentTarget as HTMLElement));
+    const source = referenceElement || (e.currentTarget as HTMLElement);
+    const styles = this.win.getComputedStyle(source);
+    try {
+      this.hostUnchanged = captureHostTransform(source);
+      this.dragScale = elementScale(source);
+    } catch (error) {
+      this.clearDrag();
+      new Notice(String(error));
+      return false;
+    }
+    // Refresh all registered destinations as well as the source before sorting
+    // hides anything. Ancestor transforms need not deliver ResizeObserver.
+    this.scrollEntities.forEach((entity) => entity.recalcInitial());
+    this.hitboxEntities.forEach((entity) => entity.recalcInitial());
 
     this.dragEntityId = id;
-    this.dragOrigin = { x: e.pageX, y: e.pageY };
-    this.dragPosition = { x: e.pageX, y: e.pageY };
+    this.dragOrigin = { x: e.clientX, y: e.clientY };
+    this.dragPosition = { x: e.clientX, y: e.clientY };
     this.dragEntity = this.hitboxEntities.get(id);
+    if (!this.dragEntity) {
+      this.clearDrag();
+      return false;
+    }
     this.dragOriginHitbox = this.dragEntity?.getHitbox();
+    this.dragFont = { fontSize: styles.fontSize, lineHeight: styles.lineHeight };
     this.dragEntityMargin = [
       parseFloat(styles.marginLeft) || 0,
       parseFloat(styles.marginTop) || 0,
@@ -98,15 +127,26 @@ export class DragManager {
     ];
 
     this.emitter.emit('dragStart', this.getDragEventData());
+    const watch = () => {
+      if (!this.dragEntity) return;
+      if (!this.hostUnchanged()) {
+        this.cancelDrag();
+        return;
+      }
+      this.transformFrame = this.win.requestAnimationFrame(watch);
+    };
+    this.transformFrame = this.win.requestAnimationFrame(watch);
+    return true;
   }
 
   dragStartHTML(e: DragEvent, viewId: string) {
     this.isHTMLDragging = true;
-    const entity = createHTMLDndEntity(e.pageX, e.pageY, [], viewId, e.view);
+    const entity = createHTMLDndEntity(e.clientX, e.clientY, [], viewId, e.view);
+    this.dragScale = 1;
 
     this.dragEntityId = entity.entityId;
-    this.dragOrigin = { x: e.pageX, y: e.pageY };
-    this.dragPosition = { x: e.pageX, y: e.pageY };
+    this.dragOrigin = { x: e.clientX, y: e.clientY };
+    this.dragPosition = { x: e.clientX, y: e.clientY };
     this.dragEntity = entity;
     this.dragOriginHitbox = entity.getHitbox();
     this.dragEntityMargin = [0, 0, 0, 0];
@@ -115,20 +155,52 @@ export class DragManager {
   }
 
   dragMove(e: PointerEvent) {
-    this.dragPosition = { x: e.pageX, y: e.pageY };
+    if (!this.dragEntity) return;
+    if (this.hostUnchanged && !this.hostUnchanged()) {
+      this.cancelDrag();
+      return;
+    }
+    this.dragPosition = { x: e.clientX, y: e.clientY };
     this.emitter.emit('dragMove', this.getDragEventData());
     this.calculateDragIntersect();
   }
 
   dragMoveHTML(e: DragEvent) {
-    this.dragPosition = { x: e.pageX, y: e.pageY };
+    this.dragPosition = { x: e.clientX, y: e.clientY };
     this.emitter.emit('dragMove', this.getDragEventData());
     this.calculateDragIntersect();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   dragEnd(e: PointerEvent) {
+    if (!this.dragEntity) return;
+    if (e.type === 'pointercancel' || (this.hostUnchanged && !this.hostUnchanged())) {
+      this.cancelDrag();
+      return;
+    }
+    const destination = this.primaryIntersection?.getHitbox() || this.dragOriginHitbox;
+    this.dropUntil =
+      this.win.performance.now() +
+      getDropDuration({
+        position: this.dragPosition,
+        destination: { x: destination[0], y: destination[1] },
+      }) +
+      25;
     this.emitter.emit('dragEnd', this.getDragEventData());
+    this.clearDrag();
+  }
+
+  cancelDrag() {
+    if (this.dragEntity) this.emitter.emit('dragCancel', this.getDragEventData());
+    this.clearDrag();
+  }
+
+  private clearDrag() {
+    this.win.cancelAnimationFrame(this.transformFrame);
+    this.transformFrame = 0;
+    this.hostUnchanged = undefined;
+    this.dragScale = 1;
+    this.dragFont = undefined;
     this.dragEntityMargin = undefined;
     this.dragEntity = undefined;
     this.dragEntityId = undefined;
@@ -142,7 +214,7 @@ export class DragManager {
   dragEndHTML(e: DragEvent, viewId: string, content: string[], isLeave?: boolean) {
     this.isHTMLDragging = false;
     if (!isLeave) {
-      this.dragEntity = createHTMLDndEntity(e.pageX, e.pageY, content, viewId, e.view);
+      this.dragEntity = createHTMLDndEntity(e.clientX, e.clientY, content, viewId, e.view);
       this.emitter.emit('dragEnd', this.getDragEventData());
     }
 
@@ -383,8 +455,8 @@ export function useDragHandle(
 
       const initialEvent = e;
       const initialPosition: Coordinates = {
-        x: e.pageX,
-        y: e.pageY,
+        x: e.clientX,
+        y: e.clientY,
       };
 
       let isDragging = false;
@@ -394,8 +466,7 @@ export function useDragHandle(
         win.addEventListener('contextmenu', cancelEvent, true);
 
         longPressTimeout = win.setTimeout(() => {
-          dndManager.dragManager.dragStart(initialEvent, droppable);
-          isDragging = true;
+          isDragging = dndManager.dragManager.dragStart(initialEvent, droppable);
           win.addEventListener('touchmove', cancelEvent, {
             passive: false,
           });
@@ -408,8 +479,8 @@ export function useDragHandle(
           if (!isDragging) {
             if (
               distanceBetween(initialPosition, {
-                x: e.pageX,
-                y: e.pageY,
+                x: e.clientX,
+                y: e.clientY,
               }) > 5
             ) {
               win.clearTimeout(longPressTimeout);
@@ -426,12 +497,12 @@ export function useDragHandle(
           if (!isDragging) {
             if (
               distanceBetween(initialPosition, {
-                x: e.pageX,
-                y: e.pageY,
+                x: e.clientX,
+                y: e.clientY,
               }) > 5
             ) {
-              dndManager.dragManager.dragStart(initialEvent, droppable);
-              isDragging = true;
+              isDragging = dndManager.dragManager.dragStart(initialEvent, droppable);
+              if (isDragging) dndManager.dragManager.dragMove(e);
             }
           } else {
             dndManager.dragManager.dragMove(e);
@@ -443,6 +514,7 @@ export function useDragHandle(
         if (e.pointerId !== pointerId) return;
         win.clearTimeout(longPressTimeout);
         isDragging = false;
+        onMove.cancel();
 
         dndManager.dragManager.dragEnd(e);
 

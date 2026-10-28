@@ -1,0 +1,201 @@
+import { Notice, TFile, setIcon } from 'obsidian';
+
+import { KanbanBoard, KanbanBoardOwner } from './KanbanBoard';
+import { hasFrontmatterKeyRaw } from './helpers';
+import KanbanPlugin from './main';
+
+export interface KanbanMount {
+  readonly view: KanbanBoard;
+  refreshGeometry(): void;
+  flush(): Promise<void>;
+  dispose(): Promise<void>;
+}
+
+/** Personal API: a component-owned board, never a workspace leaf. */
+export async function mountKanbanBoard(
+  plugin: KanbanPlugin,
+  container: HTMLElement,
+  file: TFile,
+  signal?: AbortSignal
+): Promise<KanbanMount> {
+  const { app } = plugin;
+  if (signal?.aborted) throw new Error('Kanban mount aborted.');
+  if (!container.isConnected || container.ownerDocument.defaultView !== window) {
+    throw new Error('Kanban embeds require a connected main-window container.');
+  }
+  if (app.vault.getAbstractFileByPath(file.path) !== file || file.extension !== 'md') {
+    throw new Error('Kanban source must be an existing Markdown file in this vault.');
+  }
+
+  // Install cancellation before the first await, including plugin shutdown.
+  let cancelled = false;
+  let board: KanbanBoard;
+  let root: HTMLElement;
+  let timer: number;
+  let disposed = false;
+  let disposing: Promise<void>;
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = cancelled = true;
+    window.clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+    if (board) {
+      plugin.removeView(board);
+      plugin.removeChild(board);
+    }
+    root?.remove();
+    plugin.embeddedCleanups.delete(cleanup);
+  };
+  const abort = () => {
+    if (mounted) return;
+    cancelled = true;
+    // Once mounted, the caller must explicitly await dispose to save first.
+    if (!board || !mounted) cleanup();
+  };
+  let mounted = false;
+  plugin.embeddedCleanups.add(cleanup);
+  signal?.addEventListener('abort', abort, { once: true });
+  const assertOpen = () => {
+    if (cancelled || disposed) throw new Error('Kanban mount aborted or disposed.');
+  };
+
+  try {
+    const source = await app.vault.read(file);
+    assertOpen();
+    if (!hasFrontmatterKeyRaw(source)) throw new Error('Source is not a Kanban board.');
+    root = container.createDiv({ cls: 'kanban-owned-embed' });
+    const header = root.createDiv({ cls: 'kanban-owned-embed-actions' });
+    const content = root.createDiv({ cls: 'view-content' });
+    let lastSaved = source;
+    let writing = Promise.resolve();
+    let conflict: Error;
+    const owner: KanbanBoardOwner = {
+      app,
+      containerEl: root,
+      contentEl: content,
+      file,
+      data: source,
+      scopeId: `embed-${crypto.randomUUID()}`,
+      save: () => {
+        window.clearTimeout(timer);
+        const data = owner.data;
+        // Preserve write ordering and propagate failure; a failed queue stays failed.
+        writing = writing.then(async () => {
+          if (conflict) throw conflict;
+          if (data === lastSaved) return;
+          if (app.vault.getAbstractFileByPath(file.path) !== file)
+            throw new Error('Kanban source was deleted.');
+          await app.vault.modify(file, data);
+          lastSaved = data;
+        });
+        return writing;
+      },
+      requestSave: () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          void owner
+            .save()
+            .catch((error) => new Notice(`Kanban embed save failed: ${String(error)}`));
+        }, 2000);
+      },
+      openMarkdown: () => {
+        const leaf = app.workspace.getLeaf('tab');
+        plugin.kanbanFileModes[(leaf as any).id] = 'markdown';
+        void leaf.openFile(file);
+      },
+      addAction: (icon, title, callback) => {
+        const button = header.createEl('button', { attr: { 'aria-label': title, title } });
+        setIcon(button, icon);
+        board.registerDomEvent(button, 'click', callback);
+        return button;
+      },
+    };
+    board = plugin.addChild(new KanbanBoard(plugin, owner));
+    // A read-only mount must never rewrite the source. Existing state wins over
+    // a disk snapshot when another native tab/embed already owns this file.
+    const existing = plugin.getStateManager(file);
+    if (existing) {
+      await existing.ready;
+      assertOpen();
+      owner.data = existing.getAView().data;
+    }
+    await plugin.addView(board, owner.data, !existing);
+    assertOpen();
+    if (plugin.getStateManager(file).hasError())
+      throw new Error('Kanban source could not be parsed.');
+    await board.rendered;
+    assertOpen();
+    board.registerEvent(
+      app.vault.on('modify', (changed) => {
+        if (changed !== file) return;
+        void app.vault
+          .read(file)
+          .then(async (data) => {
+            if (disposed) return;
+            if (data === owner.data) {
+              lastSaved = data;
+              return;
+            }
+            if (owner.data !== lastSaved) {
+              conflict = new Error(
+                'Kanban source changed externally while local edits were pending.'
+              );
+              throw conflict;
+            }
+            if (!hasFrontmatterKeyRaw(data)) {
+              conflict = new Error('Source is no longer a Kanban board.');
+              throw conflict;
+            }
+            lastSaved = owner.data = data;
+            await board.setViewData(data, false);
+          })
+          .catch((error) => new Notice(`Kanban embed refresh failed: ${String(error)}`));
+      })
+    );
+    board.registerEvent(
+      app.vault.on('rename', (changed, oldPath) => {
+        if (changed === file) plugin.handleViewFileRename(board, oldPath);
+      })
+    );
+    board.registerEvent(
+      app.vault.on('delete', (changed) => {
+        if (changed === file) {
+          conflict = new Error('Kanban source was deleted.');
+          new Notice(conflict.message);
+        }
+      })
+    );
+    mounted = true;
+    signal?.removeEventListener('abort', abort);
+    const flush = async () => {
+      assertOpen();
+      if (conflict) throw conflict;
+      await board.flush();
+    };
+    return {
+      view: board,
+      refreshGeometry: () => {
+        assertOpen();
+        board.refreshGeometry();
+      },
+      flush,
+      dispose: () => {
+        if (disposing) return disposing;
+        if (disposed) return Promise.resolve();
+        root.inert = true;
+        // Failed saving preserves the live board and reports the rejection.
+        disposing = flush()
+          .then(cleanup)
+          .catch((error) => {
+            disposing = undefined;
+            root.inert = false;
+            throw error;
+          });
+        return disposing;
+      },
+    };
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+}

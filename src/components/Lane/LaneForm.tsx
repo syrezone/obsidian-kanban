@@ -79,6 +79,9 @@ export function LaneForm({ onNewLane, closeLaneForm }: LaneFormProps) {
           onEnter={onEnter}
           onEscape={closeLaneForm}
           onSubmit={onSubmit}
+          onFlush={(cm) => {
+            if (cm.state.doc.toString().trim()) onSubmit(cm);
+          }}
         />
       </div>
       <div className={c('checkbox-wrapper')}>

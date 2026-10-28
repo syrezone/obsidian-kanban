@@ -1,5 +1,5 @@
 import { Keymap, Menu } from 'obsidian';
-import { KanbanView } from 'src/KanbanView';
+import { KanbanBoard } from 'src/KanbanBoard';
 
 const noBreakSpace = /\u00A0/g;
 
@@ -37,7 +37,7 @@ export function applyCheckboxIndexes(dom: HTMLElement) {
   });
 }
 
-export function bindMarkdownEvents(view: KanbanView) {
+export function bindMarkdownEvents(view: KanbanBoard) {
   const { contentEl, app } = view;
 
   const parseLink = (el: HTMLElement) => {

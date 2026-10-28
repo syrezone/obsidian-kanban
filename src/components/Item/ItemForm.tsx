@@ -57,6 +57,9 @@ export function ItemForm({ addItems, editState, setEditState, hideButton }: Item
             onSubmit={(cm) => {
               createItem(cm.state.doc.toString());
             }}
+            onFlush={(cm) => {
+              if (cm.state.doc.toString().trim()) createItem(cm.state.doc.toString());
+            }}
             onEscape={clear}
           />
         </div>

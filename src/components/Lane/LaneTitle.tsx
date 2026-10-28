@@ -92,6 +92,12 @@ export function LaneTitle({ maxItems, editState, setEditState, title, onChange }
           onEnter={onEnter}
           onEscape={onEscape}
           onSubmit={onSubmit}
+          onFlush={(cm) => {
+            const next = cm.state.doc.toString().trim();
+            if (next !== laneTitleWithMaxItems(title, maxItems)) onChange(next);
+            titleRef.current = null;
+            setEditState(EditingState.complete);
+          }}
           value={laneTitleWithMaxItems(title, maxItems)}
         />
       ) : (

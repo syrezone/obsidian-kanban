@@ -4,7 +4,7 @@ import { TFile, moment } from 'obsidian';
 import { getAPI } from 'obsidian-dataview';
 import { ComponentChild } from 'preact';
 import { memo, useContext, useMemo } from 'preact/compat';
-import { KanbanView } from 'src/KanbanView';
+import { KanbanBoard } from 'src/KanbanBoard';
 import { StateManager } from 'src/StateManager';
 import { InlineField, taskFields } from 'src/parsers/helpers/inlineMetadata';
 
@@ -102,7 +102,7 @@ export function getDateFromObj(v: any, stateManager: StateManager) {
   return null;
 }
 
-export function getLinkFromObj(v: any, view: KanbanView) {
+export function getLinkFromObj(v: any, view: KanbanBoard) {
   if (typeof v !== 'object' || !v.path) return null;
 
   const file = app.vault.getAbstractFileByPath(v.path);

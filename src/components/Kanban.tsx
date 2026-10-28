@@ -1,13 +1,22 @@
 import animateScrollTo from 'animated-scroll-to';
 import classcat from 'classcat';
 import update from 'immutability-helper';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/compat';
-import { KanbanView } from 'src/KanbanView';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'preact/compat';
+import { KanbanBoard } from 'src/KanbanBoard';
 import { StateManager } from 'src/StateManager';
 import { useIsAnythingDragging } from 'src/dnd/components/DragOverlay';
 import { ScrollContainer } from 'src/dnd/components/ScrollContainer';
 import { SortPlaceholder } from 'src/dnd/components/SortPlaceholder';
 import { Sortable } from 'src/dnd/components/Sortable';
+import { DndManagerContext } from 'src/dnd/components/context';
 import { createHTMLDndHandlers } from 'src/dnd/managers/DragManager';
 import { t } from 'src/lang/helpers';
 
@@ -27,7 +36,7 @@ const boardAccepts = [DataTypes.Lane];
 
 interface KanbanProps {
   stateManager: StateManager;
-  view: KanbanView;
+  view: KanbanBoard;
 }
 
 function getCSSClass(frontmatter: Record<string, any>): string[] {
@@ -47,6 +56,10 @@ function getCSSClass(frontmatter: Record<string, any>): string[] {
 }
 
 export const Kanban = ({ view, stateManager }: KanbanProps) => {
+  const dndManager = useContext(DndManagerContext);
+  useLayoutEffect(() => {
+    view.markRendered(dndManager);
+  }, [view, dndManager]);
   const boardData = stateManager.useState();
   const isAnythingDragging = useIsAnythingDragging();
 

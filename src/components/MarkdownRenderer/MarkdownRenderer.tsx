@@ -5,7 +5,7 @@ import moment from 'moment';
 import { Component, MarkdownRenderer as ObsidianRenderer, getLinkpath } from 'obsidian';
 import { CSSProperties, memo, useEffect, useRef } from 'preact/compat';
 import { useContext } from 'preact/hooks';
-import { KanbanView } from 'src/KanbanView';
+import { KanbanBoard } from 'src/KanbanBoard';
 import { DndManagerContext, EntityManagerContext } from 'src/dnd/components/context';
 import { PromiseCapability } from 'src/helpers/util';
 
@@ -69,7 +69,7 @@ export class BasicMarkdownRenderer extends Component {
   lastRefHeight = -1;
 
   constructor(
-    public view: KanbanView,
+    public view: KanbanBoard,
     public markdown: string
   ) {
     super();
