@@ -16,8 +16,9 @@ compares boards' files instead of splitting ids. Commands and forwarded hotkeys 
 active view (`src/helpers/boardFocus.ts`). Maguilanote's mount API is unchanged.
 
 Tests: 74 (new `board-focus`, two; owned-mount checks rename refresh), type check,
-changed-file lint and build pass. Deployed (`main.js`) to the desktop dev vault; live
-check pending. Ignis not deployed.
+changed-file lint and build pass. Deployed (`main.js`) to the desktop dev vault; the
+user confirms commands, hotkeys, menus, rename and cross-board drags in tabs and canvas
+cards on desktop. Ignis not deployed.
 
 ## 2026-10-29 - Child cards can be dragged in canvas cards
 
