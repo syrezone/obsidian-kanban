@@ -60,7 +60,7 @@ corepack yarn@1.22.22 typecheck
 corepack yarn@1.22.22 build
 ```
 
-All eight test files hold 74 tests; the counts per area are given in each section.
+All eight test files hold 75 tests; the counts per area are given in each section.
 
 Nineteen tests cover 0.5/1/2 scale, fractional border boxes, asymmetric margins,
 destination scale, pan/pointer anchoring, nested scroll shifts, real manager
@@ -233,13 +233,16 @@ async cases arise.
 
 Applies to workspace tabs and owned embeds.
 
-- **Detail pane** (`src/helpers/detailPane.ts`): a plain click on an internal link
-  in a card opens it in one reused vertical split; later clicks replace its note. A
-  closed pane, or one containing the board itself, gets a new split. Ctrl/Cmd or
-  middle click keep native `openLinkText`. **New note from card** opens there too.
-  Alt+click on a card (not editing, not on a link/checkbox/button) opens the card's
-  note there, or runs New note from card (`newNoteFromCard`, `ItemMenu.ts`) when the
-  card has none. A card's note is the first internal link in its first line
+- **Detail pane** (`src/helpers/detailPane.ts`): one reused vertical split; later
+  opens replace its note. A closed pane, or one containing the board itself, gets a
+  new split. **Click shortcuts** follow one rule (`noteClickTarget`), matching
+  Ctrl/Cmd+Enter in a card editor: Ctrl/Cmd+click opens the note in the detail pane,
+  Alt+click in a new tab. On an internal link in a card, a plain click also uses the
+  detail pane; middle click and other combinations (e.g. Ctrl+Alt) keep native
+  `openLinkText`. On a card (not editing, not on a link/checkbox/button), the same
+  shortcuts open the card's note, or run New note from card (`newNoteFromCard`,
+  `ItemMenu.ts`) and open the new note there when the card has none. The menu's
+  **New note from card** opens in the detail pane. A card's note is the first internal link in its first line
   (`cardNoteLink`): a wikilink or a Markdown link, so vaults using Markdown links work;
   URLs are skipped. New note from card links the card it finds by ID after creating
   the note, since the board may change meanwhile; if that card is gone or its first
@@ -304,6 +307,6 @@ plain bullets, mixed/numbered lists, cross-depth moves; six drop-target tests: t
 `SortManager` derives for sibling, end, nesting (skipping hidden cards) and collapsed
 lanes, and moves to it at any depth, guarded no-ops, lanes and the new-card position; five ID-addressing
 tests: the index, updates after the card moved, a deleted card, nested insert/move/split
-and list actions with collapse state; Obsidian/Dataview/DOM stubbed) and `test/subtasks.test.mjs` (eight: note tasks, stale toggles, link detection
+and list actions with collapse state; Obsidian/Dataview/DOM stubbed) and `test/subtasks.test.mjs` (nine: note tasks, stale toggles, click shortcuts, link detection
 in both styles, focused-editor routing). Rendering, drag gestures and Obsidian
 events are not covered.

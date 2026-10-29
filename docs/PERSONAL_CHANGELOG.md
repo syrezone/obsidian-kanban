@@ -1,5 +1,18 @@
 # Personal Changes
 
+## 2026-10-29 - Coherent note click shortcuts
+
+User request, branch `feat/coherent-note-clicks`: Ctrl/Cmd+Enter on a `[[link]]` in a card
+editor opens the note in the detail pane, but Ctrl/Cmd+click on a link opened a new tab
+and Alt+click on a card opened the detail pane. Now one rule (`noteClickTarget` in
+`src/helpers/detailPane.ts`) applies to links in cards and to cards: Ctrl/Cmd+click opens
+the note in the detail pane, Alt+click in a new tab; New note from card, run by either
+click on a card without a note, opens the new note there (`newNoteFromCard` takes the
+target). A plain link click still uses the detail pane; middle click and Ctrl+Alt keep
+Obsidian's behavior. Files: `detailPane.ts`, `renderMarkdown.ts`, `Item.tsx`,
+`ItemMenu.ts`, `test/subtasks.test.mjs`. 75 tests, type check, changed-file lint and build
+pass. Deployed to the desktop dev vault; live check pending. Ignis not deployed.
+
 ## 2026-10-29 - Board/host separation and commands in canvas cards (refactor 2.2)
 
 Review refactor 2.2, branch `refactor/board-host`. Delegation ran both ways: the board
