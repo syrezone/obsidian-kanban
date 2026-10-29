@@ -1,17 +1,20 @@
 # Personal Canvas Geometry Build
 
-Local branch `fix/personal-canvas-geometry` starts at release tag `2.0.51`
-(`8501981`). Runtime marker: `plugin.personalBuild === 'embed-api-2'`
+Branch `canvas-kanban` holds the whole personal build, starting at release tag `2.0.51`
+(`8501981`); it is pushed to the public fork `syrezone/obsidian-kanban` (`origin`;
+`upstream` is `community-archive/obsidian-kanban`). New work branches off it and merges
+back. The changelogs name the earlier stacked branches (`fix/personal-canvas-geometry`,
+`feat/personal-subtasks`, `refactor/*`, `feat/coherent-note-clicks`); their commits are all
+in `canvas-kanban` and the branches were deleted on 2026-10-29. Runtime marker: `plugin.personalBuild === 'embed-api-2'`
 (diagnostics only; earlier `canvas-geometry-4` and `nested-cards-1`). Consumers check
 `plugin.embedApiVersion === 2`, bumped when the `mountBoard()`/`KanbanMount` contract
 changes (2: `view` removed, `closed` added).
-Manifest ID/version remain `obsidian-kanban`/`2.0.51`; settings stay native. Branch
-`feat/personal-subtasks` (from `ab53074`) adds the detail pane, nested cards and
+Manifest ID/version remain `obsidian-kanban`/`2.0.51`; settings stay native. The work
+from `ab53074` on adds the detail pane, nested cards and
 linked-note task preview (last section). Its parser reads indented task lists as child
 cards; the file stays a plain Markdown task list that upstream Kanban still opens (it
 shows children as card text). This is a manually managed experimental build. Do not
-replace it through community updates while testing. Personal changes are retained
-in local Git commits; no remote fork, push or release has been made.
+replace it through community updates while testing. No release has been made.
 
 ## Coordinate Contract
 

@@ -1,5 +1,13 @@
 # Personal Changes
 
+## 2026-10-29 - One branch, pushed to a public fork
+
+The personal build was a stack of eight branches, each containing the previous one. The
+tip is now `canvas-kanban`, pushed to the public fork `syrezone/obsidian-kanban`; the
+seven contained branches were deleted (`git branch -d`, after the push), and an
+accidentally pushed `refactor/board-host` was removed from the fork. Branch names in the
+entries below refer to that history; all their commits are in `canvas-kanban`.
+
 ## 2026-10-29 - Coherent note click shortcuts
 
 User request, branch `feat/coherent-note-clicks`: Ctrl/Cmd+Enter on a `[[link]]` in a card
