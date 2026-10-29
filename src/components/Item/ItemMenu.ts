@@ -23,12 +23,13 @@ const mdLinkRegEx = /!?\[([^\]]*)\]\([^)]*\)/g;
 const tagRegEx = /#([^\u2000-\u206F\u2E00-\u2E7F'!"#$%&()*+,.:;<=>?@^`{|}~[\]\\\s\n\r]+)/g;
 const condenceWhiteSpaceRE = /\s+/g;
 
-/** Create a note named after the card, open it in the detail pane and link it from the card. */
+/** Create a note named after the card, open it (detail pane or new tab) and link it from the card. */
 export async function newNoteFromCard(
   stateManager: StateManager,
   boardModifiers: BoardModifiers,
   item: Item,
-  fromEl?: HTMLElement
+  fromEl?: HTMLElement,
+  openIn: 'detail' | 'tab' = 'detail'
 ) {
   const prevTitle = item.data.titleRaw.split('\n')[0].trim();
   const sanitizedTitle = prevTitle
@@ -52,7 +53,10 @@ export async function newNoteFromCard(
     sanitizedTitle
   )) as TFile;
 
-  const newLeaf = getDetailLeaf(stateManager.app, fromEl);
+  const newLeaf =
+    openIn === 'tab'
+      ? stateManager.app.workspace.getLeaf('tab')
+      : getDetailLeaf(stateManager.app, fromEl);
 
   await newLeaf.openFile(newFile);
 

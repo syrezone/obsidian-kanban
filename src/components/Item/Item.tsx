@@ -14,7 +14,7 @@ import { SortPlaceholder } from 'src/dnd/components/SortPlaceholder';
 import { Sortable, StaticSortable } from 'src/dnd/components/Sortable';
 import { DndManagerContext } from 'src/dnd/components/context';
 import { useDragHandle } from 'src/dnd/managers/DragManager';
-import { cardNoteLink, openInDetailPane } from 'src/helpers/detailPane';
+import { cardNoteLink, noteClickTarget, openInDetailPane } from 'src/helpers/detailPane';
 import { frontmatterKey } from 'src/parsers/common';
 
 import { Icon } from '../Icon/Icon';
@@ -95,19 +95,23 @@ const ItemInner = memo(function ItemInner({
     [showItemMenu, editState]
   );
 
-  // Personal build: Alt+click opens the card's linked note in the detail pane, or runs
-  // "New note from card" when the card's first line has no [[link]] yet.
+  // Personal build: Ctrl/Cmd+click opens the card's linked note in the detail pane and
+  // Alt+click in a new tab (noteClickTarget); without a [[link]] in the first line yet,
+  // both run "New note from card" and open the new note there.
   const onClick: JSX.MouseEventHandler<HTMLDivElement> = useCallback(
     (e) => {
-      if (!e.altKey || isEditing(editState)) return;
+      const target = noteClickTarget(e);
+      if (!target || isEditing(editState)) return;
       if ((e.target as HTMLElement).closest('a, input, button')) return;
       e.preventDefault();
       e.stopPropagation();
       const link = cardNoteLink(item.data.titleRaw);
-      if (link) {
+      if (link && target === 'tab') {
+        void stateManager.app.workspace.openLinkText(link, stateManager.file.path, 'tab');
+      } else if (link) {
         void openInDetailPane(stateManager.app, link, stateManager.file.path, e.currentTarget);
       } else {
-        void newNoteFromCard(stateManager, boardModifiers, item, e.currentTarget);
+        void newNoteFromCard(stateManager, boardModifiers, item, e.currentTarget, target);
       }
     },
     [editState, item, stateManager, boardModifiers]

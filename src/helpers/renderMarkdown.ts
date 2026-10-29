@@ -1,7 +1,7 @@
 import { Keymap, Menu } from 'obsidian';
 import { KanbanBoard } from 'src/KanbanBoard';
 
-import { openInDetailPane } from './detailPane';
+import { noteClickTarget, openInDetailPane } from './detailPane';
 
 const noBreakSpace = /\u00A0/g;
 
@@ -59,12 +59,16 @@ export function bindMarkdownEvents(view: KanbanBoard) {
     if (!link) return;
 
     evt.preventDefault();
-    // Personal build: plain clicks reuse the right detail pane; modifiers keep native behavior.
+    // Personal build: plain and Ctrl/Cmd clicks use the reused detail pane, Alt+click a new
+    // tab (noteClickTarget); middle clicks and other combinations keep native behavior.
+    const target = noteClickTarget(evt);
     const paneType = Keymap.isModEvent(evt);
-    if (paneType) {
-      app.workspace.openLinkText(link.href, view.file.path, paneType);
-    } else {
+    if (target === 'tab') {
+      app.workspace.openLinkText(link.href, view.file.path, 'tab');
+    } else if (target === 'detail' || !paneType) {
       void openInDetailPane(app, link.href, view.file.path, contentEl);
+    } else {
+      app.workspace.openLinkText(link.href, view.file.path, paneType);
     }
   };
 

@@ -1,4 +1,4 @@
-import { App, WorkspaceLeaf } from 'obsidian';
+import { App, Keymap, WorkspaceLeaf } from 'obsidian';
 
 // Personal build: card notes open in one reused split to the right.
 const detailLeaves = new WeakMap<App, WorkspaceLeaf>();
@@ -13,6 +13,19 @@ export function getDetailLeaf(app: App, fromEl?: HTMLElement): WorkspaceLeaf {
   const created = app.workspace.getLeaf('split', 'vertical');
   detailLeaves.set(app, created);
   return created;
+}
+
+/**
+ * Personal build: where a click on a card or a link in a card opens its note. Like
+ * Ctrl/Cmd+Enter in a card editor, Ctrl/Cmd+click uses the detail pane; Alt+click opens
+ * a new tab. Null for any other combination.
+ */
+export function noteClickTarget(evt: MouseEvent): 'detail' | 'tab' | null {
+  if (evt.button !== 0 || evt.shiftKey) return null;
+  const mod = Keymap.isModifier(evt, 'Mod');
+  if (mod && !evt.altKey) return 'detail';
+  if (evt.altKey && !mod) return 'tab';
+  return null;
 }
 
 export function openInDetailPane(

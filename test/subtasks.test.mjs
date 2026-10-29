@@ -40,10 +40,18 @@ test('a stale preview never ticks a different task that moved onto its line', ()
 
 const linkBuilt = await build({
   entryPoints: [fileURLToPath(new URL('../src/helpers/detailPane.ts', import.meta.url))],
-  bundle: true, write: false, format: 'esm', platform: 'node', external: ['obsidian'],
+  bundle: true, write: false, format: 'esm', platform: 'node',
+  // Obsidian is a host boundary; its "Mod" key is Ctrl here (Cmd on macOS).
+  plugins: [{ name: 'host-boundaries', setup(builder) {
+    builder.onResolve({ filter: /^obsidian$/ }, ({ path }) => ({ path, namespace: 'host' }));
+    builder.onLoad({ filter: /.*/, namespace: 'host' }, () => ({
+      contents: `export const Keymap = { isModifier: (evt, key) => key === 'Mod' && !!evt.ctrlKey };`,
+    }));
+  } }],
 });
 const {
-  linkAt, cardNoteLink, setFocusedEditorLinkHandler, clearFocusedEditorLinkHandler, runFocusedEditorLinkHandler,
+  linkAt, cardNoteLink, noteClickTarget,
+  setFocusedEditorLinkHandler, clearFocusedEditorLinkHandler, runFocusedEditorLinkHandler,
 } = await import(
   `data:text/javascript;base64,${Buffer.from(linkBuilt.outputFiles[0].text).toString('base64')}`
 );
@@ -70,6 +78,18 @@ test("a card's note is the first internal link of its first line, in either link
   assert.equal(cardNoteLink('[site](https://example.com) [Trip](Trip.md)'), 'Trip.md');
   assert.equal(cardNoteLink('Plan the trip\n[[Not the first line]]'), null);
   assert.equal(cardNoteLink('No link here'), null);
+});
+
+test('Ctrl/Cmd+click opens a note in the detail pane like Ctrl/Cmd+Enter; Alt+click in a tab', () => {
+  const click = (keys = {}) => ({ button: 0, ctrlKey: false, altKey: false, shiftKey: false, ...keys });
+  assert.equal(noteClickTarget(click({ ctrlKey: true })), 'detail');
+  assert.equal(noteClickTarget(click({ altKey: true })), 'tab');
+  // Plain clicks, middle clicks and other combinations are not note shortcuts (links keep
+  // their own plain-click and native behavior).
+  assert.equal(noteClickTarget(click()), null);
+  assert.equal(noteClickTarget(click({ ctrlKey: true, altKey: true })), null);
+  assert.equal(noteClickTarget(click({ altKey: true, shiftKey: true })), null);
+  assert.equal(noteClickTarget(click({ button: 1, ctrlKey: true })), null);
 });
 
 test('link commands go to the focused card editor only while it is focused', () => {
