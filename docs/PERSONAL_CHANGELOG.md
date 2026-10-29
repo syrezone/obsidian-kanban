@@ -11,7 +11,8 @@ click on a card without a note, opens the new note there (`newNoteFromCard` take
 target). A plain link click still uses the detail pane; middle click and Ctrl+Alt keep
 Obsidian's behavior. Files: `detailPane.ts`, `renderMarkdown.ts`, `Item.tsx`,
 `ItemMenu.ts`, `test/subtasks.test.mjs`. 75 tests, type check, changed-file lint and build
-pass. Deployed to the desktop dev vault; live check pending. Ignis not deployed.
+pass. The user confirms it on desktop. Deployed to Ignis `kanban-spike` (hash matches
+desktop); not yet checked there.
 
 ## 2026-10-29 - Board/host separation and commands in canvas cards (refactor 2.2)
 
